@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Swickr Message Reactions Demo</title>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,400,500,700&display=swap" />
+    <style>
+        :root {
+            --primary-color: #6200ee;
+            --accent-color: #0284c7;
+            --light-bg: #f5f5f5;
+            --user-msg-bg: #e3f2fd;
+            --border-radius: 8px;
+        }
+        
+        body {
+            font-family: 'Roboto', sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f9f9f9;
+            color: #333;
+        }
+        
+        .container {
+            max-width: 800px;
+            margin: 20px auto;
+            padding: 20px;
+        }
+        
+        .header {
+            background-color: white;
+            border-radius: var(--border-radius);
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .header h1 {
+            color: var(--primary-color);
+            margin-top: 0;
+        }
+        
+        .user-selector {
+            display: flex;
+            align-items: center;
+            margin-top: 20px;
+        }
+        
+        .user-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            margin-right: 10px;
+            cursor: pointer;
+            object-fit: cover;
+        }
+        
+        .user-avatar.active {
+            border: 2px solid var(--primary-color);
+        }
+        
+        .messages-container {
+            background-color: white;
+            border-radius: var(--border-radius);
+            padding: 20px;
+            margin-bottom: 20px;
+            height: 400px;
+            overflow-y: auto;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .message {
+            display: flex;
+            flex-direction: column;
+            margin-bottom: 20px;
+        }
+        
+        .message.sent {
+            align-items: flex-end;
+        }
+        
+        .message.received {
+            align-items: flex-start;
+        }
+        
+        .message-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 5px;
+        }
+        
+        .message-header img {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+        
+        .message-header span {
+            font-size: 12px;
+            color: #666;
+        }
+        
+        .message-bubble {
+            padding: 12px;
+            border-radius: var(--border-radius);
+            max-width: 80%;
+            word-wrap: break-word;
+        }
+        
+        .message.sent .message-bubble {
+            background-color: var(--user-msg-bg);
+        }
+        
+        .message.received .message-bubble {
+            background-color: var(--light-bg);
+        }
+        
+        .reactions-container {
+            display: flex;
+            flex-wrap: wrap;
+            margin-top: 5px;
+            gap: 5px;
+        }
+        
+        .reaction {
+            display: flex;
+            align-items: center;
+            background-color: #f0f0f0;
+            border-radius: 16px;
+            padding: 4px 8px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        
+        .reaction:hover {
+            background-color: #e0e0e0;
+        }
+        
+        .reaction.active {
+            background-color: #e8d5ff;
+        }
+        
+        .reaction-count {
+            margin-left: 4px;
+            font-size: 12px;
+        }
+        
+        .emoji-picker {
+            display: flex;
+            gap: 5px;
+            margin-top: 5px;
+        }
+        
+        .emoji-btn {
+            font-size: 16px;
+            cursor: pointer;
+            background: none;
+            border: none;
+            padding: 4px;
+            border-radius: 50%;
+            transition: background-color 0.2s;
+        }
+        
+        .emoji-btn:hover {
+            background-color: #f0f0f0;
+        }
+        
+        .message-input {
+            display: flex;
+            background-color: white;
+            border-radius: var(--border-radius);
+            padding: 15px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .message-input input {
+            flex: 1;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: var(--border-radius);
+            margin-right: 10px;
+            font-size: 16px;
+        }
+        
+        .message-input button {
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            border-radius: var(--border-radius);
+            padding: 10px 20px;
+            cursor: pointer;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+        }
+        
+        .message-input button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        
+        .message-input button svg {
+            margin-left: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Swickr Message Reactions Demo</h1>
+            <p>This is a standalone demo of the message reactions feature in Swickr. You can switch between users, send messages, and add reactions to see how the feature works.</p>
+            
+            <div>
+                <p><strong>Current User: <span id="current-user-name">Alice</span></strong></p>
+                <div class="user-selector" id="user-selector">
+                    <!-- User avatars will be added here by JavaScript -->
+                </div>
+            </div>
+        </div>
+        
+        <div class="messages-container" id="messages-container">
+            <!-- Messages will be added here by JavaScript -->
+        </div>
+        
+        <div class="message-input">
+            <input type="text" id="message-input" placeholder="Type a message...">
+            <button id="send-button" disabled>
+                Send
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="22" y1="2" x2="11" y2="13"></line>
+                    <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                </svg>
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // Mock data for the demo
+        const mockUsers = [
+            { id: 'user1', username: 'alice', displayName: 'Alice', avatarUrl: 'https://mui.com/static/images/avatar/1.jpg' },
+            { id: 'user2', username: 'bob', displayName: 'Bob', avatarUrl: 'https://mui.com/static/images/avatar/2.jpg' },
+            { id: 'user3', username: 'charlie', displayName: 'Charlie', avatarUrl: 'https://mui.com/static/images/avatar/3.jpg' },
+            { id: 'user4', username: 'dana', displayName: 'Dana', avatarUrl: 'https://mui.com/static/images/avatar/4.jpg' },
+        ];
+
+        const mockMessages = [
+            { 
+                id: 'msg1', 
+                content: 'Hey everyone! Welcome to the Swickr message reactions demo!', 
+                timestamp: new Date(Date.now() - 3600000).toISOString(),
+                userId: 'user1'
+            },
+            { 
+                id: 'msg2', 
+                content: 'This is a standalone demo showing how message reactions work in Swickr.', 
+                timestamp: new Date(Date.now() - 3000000).toISOString(),
+                userId: 'user2'
+            },
+            { 
+                id: 'msg3', 
+                content: 'You can add reactions to messages using the emoji picker.', 
+                timestamp: new Date(Date.now() - 2400000).toISOString(),
+                userId: 'user3'
+            },
+            { 
+                id: 'msg4', 
+                content: 'Try clicking on a message to see the reaction options!', 
+                timestamp: new Date(Date.now() - 1800000).toISOString(),
+                userId: 'user4'
+            },
+        ];
+
+        // Initial reactions for the demo
+        let reactions = [
+            { id: 'react1', messageId: 'msg1', userId: 'user2', emoji: '👍', timestamp: new Date(Date.now() - 3500000).toISOString() },
+            { id: 'react2', messageId: 'msg1', userId: 'user3', emoji: '👍', timestamp: new Date(Date.now() - 3400000).toISOString() },
+            { id: 'react3', messageId: 'msg1', userId: 'user4', emoji: '❤️', timestamp: new Date(Date.now() - 3300000).toISOString() },
+            { id: 'react4', messageId: 'msg2', userId: 'user1', emoji: '👏', timestamp: new Date(Date.now() - 2900000).toISOString() },
+            { id: 'react5', messageId: 'msg2', userId: 'user3', emoji: '👏', timestamp: new Date(Date.now() - 2800000).toISOString() },
+            { id: 'react6', messageId: 'msg3', userId: 'user1', emoji: '😊', timestamp: new Date(Date.now() - 2300000).toISOString() },
+            { id: 'react7', messageId: 'msg4', userId: 'user1', emoji: '👍', timestamp: new Date(Date.now() - 1700000).toISOString() },
+        ];
+
+        // Common emojis for the picker
+        const commonEmojis = ['👍', '❤️', '😊', '👏', '🎉', '🔥', '😂', '😮'];
+
+        // Current user state
+        let currentUser = mockUsers[0];
+        let messages = [...mockMessages];
+
+        // DOM elements
+        const userSelectorEl = document.getElementById('user-selector');
+        const currentUserNameEl = document.getElementById('current-user-name');
+        const messagesContainerEl = document.getElementById('messages-container');
+        const messageInputEl = document.getElementById('message-input');
+        const sendButtonEl = document.getElementById('send-button');
+
+        // Initialize the user selector
+        function initUserSelector() {
+            mockUsers.forEach(user => {
+                const avatarEl = document.createElement('img');
+                avatarEl.src = user.avatarUrl;
+                avatarEl.alt = user.displayName;
+                avatarEl.className = `user-avatar ${user.id === currentUser.id ? 'active' : ''}`;
+                avatarEl.dataset.userId = user.id;
+                avatarEl.addEventListener('click', () => switchUser(user.id));
+                userSelectorEl.appendChild(avatarEl);
+            });
+        }
+
+        // Switch the current user
+        function switchUser(userId) {
+            const user = mockUsers.find(u => u.id === userId);
+            if (user) {
+                currentUser = user;
+                currentUserNameEl.textContent = user.displayName;
+                
+                // Update active avatar
+                document.querySelectorAll('.user-avatar').forEach(avatar => {
+                    if (avatar.dataset.userId === userId) {
+                        avatar.classList.add('active');
+                    } else {
+                        avatar.classList.remove('active');
+                    }
+                });
+                
+                // Refresh messages to update reaction states
+                renderMessages();
+            }
+        }
+
+        // Get reactions for a specific message
+        function getReactionsForMessage(messageId) {
+            return reactions.filter(r => r.messageId === messageId).map(r => {
+                const user = mockUsers.find(u => u.id === r.userId);
+                return {
+                    ...r,
+                    username: user?.username,
+                    displayName: user?.displayName,
+                    avatarUrl: user?.avatarUrl
+                };
+            });
+        }
+
+        // Group reactions by emoji
+        function groupReactionsByEmoji(messageReactions) {
+            const grouped = {};
+            messageReactions.forEach(reaction => {
+                if (!grouped[reaction.emoji]) {
+                    grouped[reaction.emoji] = [];
+                }
+                grouped[reaction.emoji].push(reaction);
+            });
+            return grouped;
+        }
+
+        // Handle adding a reaction
+        function handleAddReaction(messageId, emoji) {
+            // Check if the user already reacted with this emoji
+            const existingReaction = reactions.find(
+                r => r.messageId === messageId && r.userId === currentUser.id && r.emoji === emoji
+            );
+
+            if (existingReaction) {
+                // If the reaction exists, remove it (toggle behavior)
+                reactions = reactions.filter(r => r.id !== existingReaction.id);
+            } else {
+                // Add a new reaction
+                const newReaction = {
+                    id: `react${Date.now()}`,
+                    messageId,
+                    userId: currentUser.id,
+                    emoji,
+                    timestamp: new Date().toISOString()
+                };
+                reactions.push(newReaction);
+            }
+            
+            // Re-render messages to update reactions
+            renderMessages();
+        }
+
+        // Render message reactions
+        function renderMessageReactions(messageId, messageEl) {
+            const messageReactions = getReactionsForMessage(messageId);
+            const groupedReactions = groupReactionsByEmoji(messageReactions);
+            
+            // Create reactions container
+            const reactionsContainerEl = document.createElement('div');
+            reactionsContainerEl.className = 'reactions-container';
+            
+            // Add each reaction group
+            Object.entries(groupedReactions).forEach(([emoji, reactions]) => {
+                const hasUserReacted = reactions.some(r => r.userId === currentUser.id);
+                
+                const reactionEl = document.createElement('div');
+                reactionEl.className = `reaction ${hasUserReacted ? 'active' : ''}`;
+                reactionEl.innerHTML = `${emoji} <span class="reaction-count">${reactions.length}</span>`;
+                reactionEl.addEventListener('click', () => handleAddReaction(messageId, emoji));
+                
+                reactionsContainerEl.appendChild(reactionEl);
+            });
+            
+            // Create emoji picker
+            const emojiPickerEl = document.createElement('div');
+            emojiPickerEl.className = 'emoji-picker';
+            emojiPickerEl.style.display = 'none';
+            
+            commonEmojis.forEach(emoji => {
+                const emojiBtn = document.createElement('button');
+                emojiBtn.className = 'emoji-btn';
+                emojiBtn.textContent = emoji;
+                emojiBtn.addEventListener('click', () => handleAddReaction(messageId, emoji));
+                emojiPickerEl.appendChild(emojiBtn);
+            });
+            
+            // Add click handler to message bubble to show/hide emoji picker
+            const messageBubbleEl = messageEl.querySelector('.message-bubble');
+            messageBubbleEl.addEventListener('click', () => {
+                // Toggle emoji picker
+                if (emojiPickerEl.style.display === 'none') {
+                    emojiPickerEl.style.display = 'flex';
+                } else {
+                    emojiPickerEl.style.display = 'none';
+                }
+            });
+            
+            // Add reactions and emoji picker to message
+            messageEl.appendChild(reactionsContainerEl);
+            messageEl.appendChild(emojiPickerEl);
+        }
+
+        // Render all messages
+        function renderMessages() {
+            messagesContainerEl.innerHTML = '';
+            
+            messages.forEach(message => {
+                const user = mockUsers.find(u => u.id === message.userId);
+                const isCurrentUser = message.userId === currentUser.id;
+                
+                const messageEl = document.createElement('div');
+                messageEl.className = `message ${isCurrentUser ? 'sent' : 'received'}`;
+                messageEl.dataset.messageId = message.id;
+                
+                const messageHeaderEl = document.createElement('div');
+                messageHeaderEl.className = 'message-header';
+                
+                const avatarEl = document.createElement('img');
+                avatarEl.src = user?.avatarUrl;
+                avatarEl.alt = user?.displayName;
+                
+                const userInfoEl = document.createElement('span');
+                userInfoEl.textContent = `${user?.displayName} • ${new Date(message.timestamp).toLocaleTimeString()}`;
+                
+                messageHeaderEl.appendChild(avatarEl);
+                messageHeaderEl.appendChild(userInfoEl);
+                
+                const messageBubbleEl = document.createElement('div');
+                messageBubbleEl.className = 'message-bubble';
+                messageBubbleEl.textContent = message.content;
+                
+                messageEl.appendChild(messageHeaderEl);
+                messageEl.appendChild(messageBubbleEl);
+                
+                // Add reactions
+                renderMessageReactions(message.id, messageEl);
+                
+                messagesContainerEl.appendChild(messageEl);
+            });
+            
+            // Scroll to bottom
+            messagesContainerEl.scrollTop = messagesContainerEl.scrollHeight;
+        }
+
+        // Handle sending a new message
+        function handleSendMessage() {
+            const content = messageInputEl.value.trim();
+            if (content) {
+                const newMsg = {
+                    id: `msg${Date.now()}`,
+                    content,
+                    timestamp: new Date().toISOString(),
+                    userId: currentUser.id
+                };
+                messages.push(newMsg);
+                messageInputEl.value = '';
+                sendButtonEl.disabled = true;
+                renderMessages();
+            }
+        }
+
+        // Initialize the demo
+        function initDemo() {
+            initUserSelector();
+            renderMessages();
+            
+            // Set up message input
+            messageInputEl.addEventListener('input', () => {
+                sendButtonEl.disabled = !messageInputEl.value.trim();
+            });
+            
+            messageInputEl.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter' && messageInputEl.value.trim()) {
+                    handleSendMessage();
+                }
+            });
+            
+            sendButtonEl.addEventListener('click', handleSendMessage);
+        }
+
+        // Start the demo
+        document.addEventListener('DOMContentLoaded', initDemo);
+    </script>
+</body>
+</html>

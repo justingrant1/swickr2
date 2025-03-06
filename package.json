@@ -1,0 +1,29 @@
+{
+  "name": "swickr",
+  "version": "1.0.0",
+  "description": "Swickr - a high-performance messaging service with focus on speed and simplicity",
+  "scripts": {
+    "install:all": "npm install && cd client && npm install && cd ../server && npm install",
+    "start:client": "cd client && npm start",
+    "start:server": "cd server && npm start",
+    "dev:client": "cd client && npm start",
+    "dev:server": "cd server && npm run dev",
+    "build:client": "cd client && npm run build",
+    "test:client": "cd client && npm test",
+    "test:server": "cd server && npm test",
+    "start": "cd server && npm start"
+  },
+  "keywords": [
+    "messaging",
+    "websockets",
+    "real-time",
+    "express",
+    "react",
+    "swickr"
+  ],
+  "author": "Swickr Team",
+  "license": "MIT",
+  "engines": {
+    "node": ">=16.0.0"
+  }
+}
