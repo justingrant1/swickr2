@@ -9,6 +9,7 @@ const conversationRoutes = require('./conversations/routes');
 const reactionRoutes = require('./reactions/routes');
 const statusRoutes = require('../routes/statusRoutes');
 const notificationRoutes = require('../routes/notificationRoutes');
+const debugRoutes = require('../routes/debugRoutes');
 
 /**
  * Set up all API routes
@@ -37,6 +38,11 @@ const setupRoutes = (app) => {
   apiRouter.use('/reactions', reactionRoutes);
   apiRouter.use('/status', statusRoutes);
   apiRouter.use('/notifications', notificationRoutes);
+  
+  // Debug routes (only in development or when explicitly enabled)
+  if (process.env.NODE_ENV === 'development' || process.env.ENABLE_DEBUG_ROUTES === 'true') {
+    apiRouter.use('/debug', debugRoutes);
+  }
   
   // Mount API router to /api
   app.use('/api', apiRouter);

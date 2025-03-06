@@ -18,9 +18,13 @@ const User = require('../../models/User');
 const register = async (req, res, next) => {
   try {
     const { username, email, password, fullName } = req.body;
+    
+    logger.info(`Registration attempt for username: ${username}, email: ${email}`);
+    logger.debug('Registration request body:', req.body);
 
     // Validate input
     if (!username || !email || !password) {
+      logger.warn(`Registration validation failed: missing ${!username ? 'username' : !email ? 'email' : 'password'}`);
       return next(ApiError.badRequest('Please provide username, email, and password'));
     }
 
@@ -33,10 +37,16 @@ const register = async (req, res, next) => {
     };
 
     try {
+      // Log database mode
+      const useMockDatabase = process.env.USE_MOCK_DB === 'true' || process.env.NODE_ENV === 'development';
+      logger.info(`Using ${useMockDatabase ? 'mock' : 'real'} database for registration`);
+      
       const newUser = await User.create(userData);
+      logger.info(`User created successfully with ID: ${newUser.id}`);
 
       // Generate tokens
       const tokens = await generateTokens(newUser);
+      logger.info('Tokens generated successfully');
 
       // Return user data and tokens
       res.status(201).json({
@@ -50,14 +60,15 @@ const register = async (req, res, next) => {
         tokens
       });
     } catch (error) {
-      if (error.message.includes('already taken') || error.message.includes('already registered')) {
+      logger.error('User creation error:', error);
+      if (error.message.includes('already taken') || error.message.includes('already registered') || error.message.includes('already exists')) {
         return next(ApiError.conflict(error.message));
       }
       throw error;
     }
   } catch (error) {
     logger.error('Registration error:', error);
-    next(ApiError.internal('Registration failed'));
+    next(ApiError.internal('Registration failed: ' + (error.message || 'Unknown error')));
   }
 };
 
