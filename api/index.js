@@ -31,33 +31,63 @@ mongoose.connect(MONGODB_URI, {
   }
 });
 
-// Define User Schema
-const userSchema = new mongoose.Schema({
-  username: { type: String, required: true, unique: true },
-  email: { type: String, required: true, unique: true },
-  password_hash: { type: String, required: true },
-  full_name: { type: String },
-  status: { type: String, default: 'online' },
-  created_at: { type: Date, default: Date.now }
-});
+// Define schemas and models
+let User, Message;
 
-// Define Message Schema
-const messageSchema = new mongoose.Schema({
-  content: { type: String, required: true },
-  userId: { type: String, required: true },
-  recipientId: { type: String, required: true },
-  timestamp: { type: Date, default: Date.now }
+// Initialize models after connection is established
+mongoose.connection.on('connected', () => {
+  console.log('Mongoose connection established, defining models');
+  
+  // Define User Schema if not already defined
+  if (!mongoose.models.User) {
+    const userSchema = new mongoose.Schema({
+      username: { type: String, required: true },
+      email: { type: String, required: true },
+      password_hash: { type: String, required: true },
+      full_name: { type: String },
+      status: { type: String, default: 'online' },
+      created_at: { type: Date, default: Date.now }
+    });
+    
+    // Remove unique index which can cause issues in serverless environments
+    userSchema.index({ username: 1 }, { unique: true });
+    userSchema.index({ email: 1 }, { unique: true });
+    
+    User = mongoose.model('User', userSchema);
+  } else {
+    User = mongoose.models.User;
+  }
+  
+  // Define Message Schema if not already defined
+  if (!mongoose.models.Message) {
+    const messageSchema = new mongoose.Schema({
+      content: { type: String, required: true },
+      userId: { type: String, required: true },
+      recipientId: { type: String, required: true },
+      timestamp: { type: Date, default: Date.now }
+    });
+    
+    Message = mongoose.model('Message', messageSchema);
+  } else {
+    Message = mongoose.models.Message;
+  }
+  
+  // Create default user after models are defined
+  createDefaultUser();
 });
-
-// Create models
-const User = mongoose.models.User || mongoose.model('User', userSchema);
-const Message = mongoose.models.Message || mongoose.model('Message', messageSchema);
 
 // Add default user if none exists
 const createDefaultUser = async () => {
   try {
+    if (!User) {
+      console.log('User model not defined yet, skipping default user creation');
+      return;
+    }
+    
+    console.log('Checking for default user');
     const existingUser = await User.findOne({ username: 'testuser1' });
     if (!existingUser) {
+      console.log('Creating default user');
       const passwordHash = await bcrypt.hash('password', 10);
       await User.create({
         username: 'testuser1',
@@ -67,13 +97,15 @@ const createDefaultUser = async () => {
         status: 'online'
       });
       console.log('Default user created');
+    } else {
+      console.log('Default user already exists');
     }
   } catch (error) {
     console.error('Error creating default user:', error);
   }
 };
 
-createDefaultUser();
+// We'll call createDefaultUser after the models are defined in the connection event
 
 // JWT Secret
 const JWT_SECRET = process.env.JWT_SECRET || 'your_production_jwt_secret_key_here';
@@ -108,6 +140,13 @@ const authenticate = (req, res, next) => {
 app.post('/api/auth/register', async (req, res) => {
   try {
     console.log('Registration request received:', req.body);
+    
+    // Check if User model is defined
+    if (!User) {
+      console.error('User model not defined yet');
+      return res.status(503).json({ error: { message: 'Database not ready, please try again in a moment' } });
+    }
+    
     const { username, email, password, fullName } = req.body;
     
     // Validate input
@@ -118,10 +157,16 @@ app.post('/api/auth/register', async (req, res) => {
     
     // Check if user already exists
     try {
-      const existingUser = await User.findOne({ $or: [{ username }, { email }] });
+      const existingUser = await User.findOne({ username });
       if (existingUser) {
         console.log('User already exists:', existingUser.username);
-        return res.status(409).json({ error: { message: 'Username or email already taken' } });
+        return res.status(409).json({ error: { message: 'Username already taken' } });
+      }
+      
+      const existingEmail = await User.findOne({ email });
+      if (existingEmail) {
+        console.log('Email already exists:', email);
+        return res.status(409).json({ error: { message: 'Email already taken' } });
       }
     } catch (findError) {
       console.error('Error checking existing user:', findError);
@@ -197,6 +242,13 @@ app.post('/api/auth/register', async (req, res) => {
 app.post('/api/auth/login', async (req, res) => {
   try {
     console.log('Login request received:', { username: req.body.username });
+    
+    // Check if User model is defined
+    if (!User) {
+      console.error('User model not defined yet');
+      return res.status(503).json({ error: { message: 'Database not ready, please try again in a moment' } });
+    }
+    
     const { username, password } = req.body;
     
     // Validate input
@@ -284,6 +336,12 @@ app.post('/api/auth/login', async (req, res) => {
 // Get user profile
 app.get('/api/users/me', authenticate, async (req, res) => {
   try {
+    // Check if User model is defined
+    if (!User) {
+      console.error('User model not defined yet');
+      return res.status(503).json({ error: { message: 'Database not ready, please try again in a moment' } });
+    }
+    
     const user = await User.findById(req.user.userId);
     
     if (!user) {
@@ -306,6 +364,12 @@ app.get('/api/users/me', authenticate, async (req, res) => {
 // Get messages
 app.get('/api/messages', authenticate, async (req, res) => {
   try {
+    // Check if Message model is defined
+    if (!Message) {
+      console.error('Message model not defined yet');
+      return res.status(503).json({ error: { message: 'Database not ready, please try again in a moment' } });
+    }
+    
     const messages = await Message.find({
       $or: [
         { userId: req.user.userId },
@@ -323,6 +387,12 @@ app.get('/api/messages', authenticate, async (req, res) => {
 // Send message
 app.post('/api/messages', authenticate, async (req, res) => {
   try {
+    // Check if Message model is defined
+    if (!Message) {
+      console.error('Message model not defined yet');
+      return res.status(503).json({ error: { message: 'Database not ready, please try again in a moment' } });
+    }
+    
     const { content, recipientId } = req.body;
     
     if (!content || !recipientId) {
@@ -346,6 +416,12 @@ app.post('/api/messages', authenticate, async (req, res) => {
 // Get contacts
 app.get('/api/contacts', authenticate, async (req, res) => {
   try {
+    // Check if User model is defined
+    if (!User) {
+      console.error('User model not defined yet');
+      return res.status(503).json({ error: { message: 'Database not ready, please try again in a moment' } });
+    }
+    
     // Find all users except the current user
     const contacts = await User.find({ _id: { $ne: req.user.userId } })
       .select('_id username full_name status');
