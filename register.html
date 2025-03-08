@@ -211,7 +211,7 @@
                     localStorage.setItem('user', JSON.stringify(data.user));
                     
                     // Redirect to messages page
-                    window.location.href = '/messages.html';
+                    window.location.href = '/messages';
                 } else {
                     loginError.textContent = data.error?.message || 'Login failed';
                     loginError.style.display = 'block';
@@ -262,7 +262,7 @@
                     
                     // Redirect to messages page after a short delay
                     setTimeout(() => {
-                        window.location.href = '/messages.html';
+                        window.location.href = '/messages';
                     }, 1500);
                 } else {
                     registerError.textContent = data.error?.message || 'Registration failed';
