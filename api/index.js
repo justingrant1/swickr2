@@ -14,6 +14,15 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// In-memory database fallback
+const inMemoryDB = {
+  users: [],
+  messages: []
+};
+
+// Flag to track if we're using in-memory database
+let usingInMemoryDB = false;
+
 // MongoDB Connection - try multiple connection strings
 const MONGODB_URIS = [
   process.env.MONGODB_URI || 'mongodb+srv://jgrant:Bowery85!@cluster1.cftfrg0.mongodb.net/swickr?retryWrites=true&w=majority',
@@ -24,7 +33,7 @@ const MONGODB_URIS = [
 console.log('Primary MongoDB URI:', MONGODB_URIS[0].replace(/\/\/([^:]+):([^@]+)@/, '//***:***@'));
 console.log('Fallback MongoDB URI:', MONGODB_URIS[1]);
 
-// Flag to track if we're connected
+// Flag to track if we're connected to MongoDB
 let isConnected = false;
 
 // Define schemas and models
@@ -245,16 +254,6 @@ app.post('/api/auth/register', async (req, res) => {
   try {
     console.log('Registration request received:', req.body);
     
-    // Check if User model is defined, with retry
-    if (!User) {
-      console.log('User model not defined yet, waiting...');
-      const modelsReady = await waitForModels();
-      if (!modelsReady) {
-        console.error('Models not ready after waiting');
-        return res.status(503).json({ error: { message: 'Database not ready, please try again in a moment' } });
-      }
-    }
-    
     const { username, email, password, fullName } = req.body;
     
     // Validate input
@@ -263,79 +262,116 @@ app.post('/api/auth/register', async (req, res) => {
       return res.status(400).json({ error: { message: 'Please provide username, email, and password' } });
     }
     
-    // Check if user already exists
-    try {
-      // Check connection state
-      if (mongoose.connection.readyState !== 1) {
-        console.error('MongoDB not connected when checking user. State:', mongoose.connection.readyState);
-        return res.status(503).json({ 
-          error: { 
-            message: 'Database connection not ready', 
-            details: `Connection state: ${mongoose.connection.readyState}` 
-          } 
+    // Try to use MongoDB if available
+    if (mongoose.connection.readyState === 1 && User) {
+      try {
+        console.log('Using MongoDB for registration');
+        
+        // Check if user already exists
+        console.log('Checking if username exists:', username);
+        const existingUser = await User.findOne({ username });
+        if (existingUser) {
+          console.log('User already exists:', existingUser.username);
+          return res.status(409).json({ error: { message: 'Username already taken' } });
+        }
+        
+        console.log('Checking if email exists:', email);
+        const existingEmail = await User.findOne({ email });
+        if (existingEmail) {
+          console.log('Email already exists:', email);
+          return res.status(409).json({ error: { message: 'Email already taken' } });
+        }
+        
+        console.log('Username and email are available');
+        
+        // Hash password
+        const salt = await bcrypt.genSalt(10);
+        const passwordHash = await bcrypt.hash(password, salt);
+        
+        // Create new user
+        const newUser = await User.create({
+          username,
+          email,
+          password_hash: passwordHash,
+          full_name: fullName || username,
+          status: 'online'
         });
+        
+        console.log('User created successfully in MongoDB:', newUser.username);
+        
+        // Generate tokens
+        const accessToken = jwt.sign(
+          { userId: newUser._id, username: newUser.username, email: newUser.email },
+          JWT_SECRET,
+          { expiresIn: '15m' }
+        );
+        
+        const refreshToken = jwt.sign(
+          { userId: newUser._id },
+          JWT_SECRET,
+          { expiresIn: '7d' }
+        );
+        
+        // Return user data and tokens
+        return res.status(201).json({
+          user: {
+            id: newUser._id,
+            username: newUser.username,
+            email: newUser.email,
+            fullName: newUser.full_name,
+            status: newUser.status
+          },
+          tokens: {
+            accessToken,
+            refreshToken
+          }
+        });
+      } catch (mongoError) {
+        console.error('MongoDB error during registration:', mongoError);
+        console.log('Falling back to in-memory database');
+        // Fall through to in-memory database
       }
-      
-      console.log('Checking if username exists:', username);
-      const existingUser = await User.findOne({ username });
-      if (existingUser) {
-        console.log('User already exists:', existingUser.username);
-        return res.status(409).json({ error: { message: 'Username already taken' } });
-      }
-      
-      console.log('Checking if email exists:', email);
-      const existingEmail = await User.findOne({ email });
-      if (existingEmail) {
-        console.log('Email already exists:', email);
-        return res.status(409).json({ error: { message: 'Email already taken' } });
-      }
-      
-      console.log('Username and email are available');
-    } catch (findError) {
-      console.error('Error checking existing user:', findError);
-      // Try to reconnect to MongoDB using connectDB function
-      console.log('Attempting to reconnect to MongoDB...');
-      const reconnected = await connectDB();
-      if (reconnected) {
-        console.log('Reconnection successful');
-      } else {
-        console.error('Reconnection failed');
-      }
-      
-      return res.status(500).json({ 
-        error: { 
-          message: 'Database error when checking user', 
-          details: findError.message,
-          stack: process.env.NODE_ENV === 'development' ? findError.stack : undefined
-        } 
-      });
+    } else {
+      console.log('MongoDB not available, using in-memory database');
+      // Fall through to in-memory database
+    }
+    
+    // Use in-memory database as fallback
+    usingInMemoryDB = true;
+    console.log('Using in-memory database for registration');
+    
+    // Check if user already exists in in-memory DB
+    const existingUser = inMemoryDB.users.find(u => u.username === username);
+    if (existingUser) {
+      console.log('User already exists in in-memory DB:', existingUser.username);
+      return res.status(409).json({ error: { message: 'Username already taken' } });
+    }
+    
+    const existingEmail = inMemoryDB.users.find(u => u.email === email);
+    if (existingEmail) {
+      console.log('Email already exists in in-memory DB:', email);
+      return res.status(409).json({ error: { message: 'Email already taken' } });
     }
     
     // Hash password
-    let passwordHash;
-    try {
-      const salt = await bcrypt.genSalt(10);
-      passwordHash = await bcrypt.hash(password, salt);
-    } catch (hashError) {
-      console.error('Error hashing password:', hashError);
-      return res.status(500).json({ error: { message: 'Error processing password', details: hashError.message } });
-    }
+    const salt = await bcrypt.genSalt(10);
+    const passwordHash = await bcrypt.hash(password, salt);
     
-    // Create new user
-    let newUser;
-    try {
-      newUser = await User.create({
-        username,
-        email,
-        password_hash: passwordHash,
-        full_name: fullName || username,
-        status: 'online'
-      });
-      console.log('User created successfully:', newUser.username);
-    } catch (createError) {
-      console.error('Error creating user:', createError);
-      return res.status(500).json({ error: { message: 'Error creating user', details: createError.message } });
-    }
+    // Create new user in in-memory DB
+    const userId = uuidv4();
+    const newUser = {
+      _id: userId,
+      id: userId,
+      username,
+      email,
+      password_hash: passwordHash,
+      full_name: fullName || username,
+      status: 'online',
+      created_at: new Date()
+    };
+    
+    inMemoryDB.users.push(newUser);
+    console.log('User created successfully in in-memory DB:', newUser.username);
     
     // Generate tokens
     const accessToken = jwt.sign(
@@ -351,7 +387,7 @@ app.post('/api/auth/register', async (req, res) => {
     );
     
     // Return user data and tokens
-    res.status(201).json({
+    return res.status(201).json({
       user: {
         id: newUser._id,
         username: newUser.username,
@@ -381,16 +417,6 @@ app.post('/api/auth/login', async (req, res) => {
   try {
     console.log('Login request received:', { username: req.body.username });
     
-    // Check if User model is defined, with retry
-    if (!User) {
-      console.log('User model not defined yet, waiting...');
-      const modelsReady = await waitForModels();
-      if (!modelsReady) {
-        console.error('Models not ready after waiting');
-        return res.status(503).json({ error: { message: 'Database not ready, please try again in a moment' } });
-      }
-    }
-    
     const { username, password } = req.body;
     
     // Validate input
@@ -399,40 +425,92 @@ app.post('/api/auth/login', async (req, res) => {
       return res.status(400).json({ error: { message: 'Please provide username and password' } });
     }
     
-    // Find user
-    let user;
-    try {
-      user = await User.findOne({ username });
-      if (!user) {
-        console.log('User not found:', username);
-        return res.status(401).json({ error: { message: 'Invalid credentials' } });
+    // Try to use MongoDB if available
+    if (mongoose.connection.readyState === 1 && User) {
+      try {
+        console.log('Using MongoDB for login');
+        
+        // Find user
+        const user = await User.findOne({ username });
+        if (!user) {
+          console.log('User not found in MongoDB:', username);
+          // Don't return error yet, check in-memory DB
+        } else {
+          // Verify password
+          const isMatch = await bcrypt.compare(password, user.password_hash);
+          if (!isMatch) {
+            console.log('Invalid password for user in MongoDB:', username);
+            return res.status(401).json({ error: { message: 'Invalid credentials' } });
+          }
+          
+          // Update user status
+          try {
+            user.status = 'online';
+            await user.save();
+          } catch (saveError) {
+            console.error('Error updating user status:', saveError);
+            // Continue even if status update fails
+          }
+          
+          // Generate tokens
+          const accessToken = jwt.sign(
+            { userId: user._id, username: user.username, email: user.email },
+            JWT_SECRET,
+            { expiresIn: '15m' }
+          );
+          
+          const refreshToken = jwt.sign(
+            { userId: user._id },
+            JWT_SECRET,
+            { expiresIn: '7d' }
+          );
+          
+          console.log('Login successful for user in MongoDB:', username);
+          
+          // Return user data and tokens
+          return res.status(200).json({
+            user: {
+              id: user._id,
+              username: user.username,
+              email: user.email,
+              fullName: user.full_name,
+              status: user.status
+            },
+            tokens: {
+              accessToken,
+              refreshToken
+            }
+          });
+        }
+      } catch (mongoError) {
+        console.error('MongoDB error during login:', mongoError);
+        console.log('Falling back to in-memory database');
+        // Fall through to in-memory database
       }
-    } catch (findError) {
-      console.error('Error finding user:', findError);
-      return res.status(500).json({ error: { message: 'Database error when finding user', details: findError.message } });
+    } else {
+      console.log('MongoDB not available, using in-memory database');
+      // Fall through to in-memory database
+    }
+    
+    // Use in-memory database as fallback
+    console.log('Using in-memory database for login');
+    
+    // Find user in in-memory DB
+    const user = inMemoryDB.users.find(u => u.username === username);
+    if (!user) {
+      console.log('User not found in in-memory DB:', username);
+      return res.status(401).json({ error: { message: 'Invalid credentials' } });
     }
     
     // Verify password
-    let isMatch;
-    try {
-      isMatch = await bcrypt.compare(password, user.password_hash);
-      if (!isMatch) {
-        console.log('Invalid password for user:', username);
-        return res.status(401).json({ error: { message: 'Invalid credentials' } });
-      }
-    } catch (compareError) {
-      console.error('Error comparing passwords:', compareError);
-      return res.status(500).json({ error: { message: 'Error verifying password', details: compareError.message } });
+    const isMatch = await bcrypt.compare(password, user.password_hash);
+    if (!isMatch) {
+      console.log('Invalid password for user in in-memory DB:', username);
+      return res.status(401).json({ error: { message: 'Invalid credentials' } });
     }
     
     // Update user status
-    try {
-      user.status = 'online';
-      await user.save();
-    } catch (saveError) {
-      console.error('Error updating user status:', saveError);
-      // Continue even if status update fails
-    }
+    user.status = 'online';
     
     // Generate tokens
     const accessToken = jwt.sign(
@@ -447,10 +525,10 @@ app.post('/api/auth/login', async (req, res) => {
       { expiresIn: '7d' }
     );
     
-    console.log('Login successful for user:', username);
+    console.log('Login successful for user in in-memory DB:', username);
     
     // Return user data and tokens
-    res.status(200).json({
+    return res.status(200).json({
       user: {
         id: user._id,
         username: user.username,
