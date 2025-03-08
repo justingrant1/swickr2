@@ -41,49 +41,85 @@ const messageSchema = new mongoose.Schema({
   timestamp: { type: Date, default: Date.now }
 });
 
-// Initialize models
-try {
-  // Check if models are already defined
-  if (mongoose.models.User) {
-    User = mongoose.models.User;
-  } else {
-    User = mongoose.model('User', userSchema);
-  }
-  
-  if (mongoose.models.Message) {
-    Message = mongoose.models.Message;
-  } else {
-    Message = mongoose.model('Message', messageSchema);
-  }
-} catch (error) {
-  console.error('Error initializing models:', error);
-}
+// Configure mongoose
+mongoose.set('strictQuery', false);
 
-// Connect to MongoDB - using a simpler approach
-mongoose.connect(MONGODB_URI)
-  .then(() => {
+// Function to connect to MongoDB
+const connectDB = async () => {
+  try {
+    console.log('Attempting to connect to MongoDB...');
+    
+    // Set connection options
+    const options = {
+      useNewUrlParser: true,
+      useUnifiedTopology: true,
+      serverSelectionTimeoutMS: 10000, // 10 seconds
+      socketTimeoutMS: 45000, // 45 seconds
+      family: 4 // Use IPv4, skip trying IPv6
+    };
+    
+    // Connect to MongoDB
+    await mongoose.connect(MONGODB_URI, options);
     console.log('MongoDB connected successfully');
+    
+    // Initialize models
+    initializeModels();
+    
     // Create default user
-    createDefaultUser();
-  })
-  .catch(err => {
-    console.error('MongoDB connection error:', err);
-  });
+    await createDefaultUser();
+    
+    return true;
+  } catch (error) {
+    console.error('MongoDB connection error:', error);
+    return false;
+  }
+};
 
-// Fallback connection event handler
+// Function to initialize models
+const initializeModels = () => {
+  try {
+    // Check if models are already defined
+    if (mongoose.models.User) {
+      User = mongoose.models.User;
+    } else {
+      User = mongoose.model('User', userSchema);
+    }
+    
+    if (mongoose.models.Message) {
+      Message = mongoose.models.Message;
+    } else {
+      Message = mongoose.model('Message', messageSchema);
+    }
+    
+    console.log('Models initialized successfully');
+  } catch (error) {
+    console.error('Error initializing models:', error);
+  }
+};
+
+// Connect to MongoDB
+connectDB();
+
+// Set up connection event handlers
 mongoose.connection.on('connected', () => {
   console.log('MongoDB connected event fired');
+  initializeModels();
   createDefaultUser();
 });
 
 // Handle connection errors
-mongoose.connection.on('error', (err) => {
+mongoose.connection.on('error', async (err) => {
   console.error('MongoDB connection error event:', err);
+  
+  // Try to reconnect
+  console.log('Attempting to reconnect...');
+  await connectDB();
 });
 
 // Handle disconnection
-mongoose.connection.on('disconnected', () => {
-  console.log('MongoDB disconnected');
+mongoose.connection.on('disconnected', async () => {
+  console.log('MongoDB disconnected, attempting to reconnect...');
+  await connectDB();
 });
 
 // Add default user if none exists
