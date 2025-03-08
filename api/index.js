@@ -14,11 +14,18 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// MongoDB Connection
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://jgrant:Bowery85!@cluster1.cftfrg0.mongodb.net/swickr?retryWrites=true&w=majority';
+// MongoDB Connection - try multiple connection strings
+const MONGODB_URIS = [
+  process.env.MONGODB_URI || 'mongodb+srv://jgrant:Bowery85!@cluster1.cftfrg0.mongodb.net/swickr?retryWrites=true&w=majority',
+  'mongodb://localhost:27017/swickr' // Fallback to local MongoDB if available
+];
 
-// Log the MongoDB URI (without password)
-console.log('MongoDB URI:', MONGODB_URI.replace(/\/\/([^:]+):([^@]+)@/, '//***:***@'));
+// Log the MongoDB URIs (without password)
+console.log('Primary MongoDB URI:', MONGODB_URIS[0].replace(/\/\/([^:]+):([^@]+)@/, '//***:***@'));
+console.log('Fallback MongoDB URI:', MONGODB_URIS[1]);
+
+// Flag to track if we're connected
+let isConnected = false;
 
 // Define schemas and models
 let User, Message;
@@ -44,35 +51,52 @@ const messageSchema = new mongoose.Schema({
 // Configure mongoose
 mongoose.set('strictQuery', false);
 
-// Function to connect to MongoDB
+// Function to connect to MongoDB with multiple connection strings
 const connectDB = async () => {
-  try {
-    console.log('Attempting to connect to MongoDB...');
-    
-    // Set connection options
-    const options = {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-      serverSelectionTimeoutMS: 10000, // 10 seconds
-      socketTimeoutMS: 45000, // 45 seconds
-      family: 4 // Use IPv4, skip trying IPv6
-    };
-    
-    // Connect to MongoDB
-    await mongoose.connect(MONGODB_URI, options);
-    console.log('MongoDB connected successfully');
-    
-    // Initialize models
-    initializeModels();
-    
-    // Create default user
-    await createDefaultUser();
-    
-    return true;
-  } catch (error) {
-    console.error('MongoDB connection error:', error);
-    return false;
+  // Set connection options
+  const options = {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+    serverSelectionTimeoutMS: 10000, // 10 seconds
+    socketTimeoutMS: 45000, // 45 seconds
+    family: 4 // Use IPv4, skip trying IPv6
+  };
+  
+  // Try each connection string in order
+  for (let i = 0; i < MONGODB_URIS.length; i++) {
+    const uri = MONGODB_URIS[i];
+    try {
+      console.log(`Attempting to connect to MongoDB using URI #${i+1}...`);
+      
+      // Connect to MongoDB
+      await mongoose.connect(uri, options);
+      console.log(`MongoDB connected successfully using URI #${i+1}`);
+      
+      // Set connected flag
+      isConnected = true;
+      
+      // Initialize models
+      initializeModels();
+      
+      // Create default user
+      await createDefaultUser();
+      
+      return true;
+    } catch (error) {
+      console.error(`MongoDB connection error with URI #${i+1}:`, error);
+      
+      // If this is the last URI, return false
+      if (i === MONGODB_URIS.length - 1) {
+        console.error('All connection attempts failed');
+        return false;
+      }
+      
+      // Otherwise, continue to the next URI
+      console.log(`Trying next connection string...`);
+    }
   }
+  
+  return false;
 };
 
 // Function to initialize models
@@ -269,13 +293,13 @@ app.post('/api/auth/register', async (req, res) => {
       console.log('Username and email are available');
     } catch (findError) {
       console.error('Error checking existing user:', findError);
-      // Try to reconnect to MongoDB
-      try {
-        console.log('Attempting to reconnect to MongoDB...');
-        await mongoose.connect(MONGODB_URI);
+      // Try to reconnect to MongoDB using connectDB function
+      console.log('Attempting to reconnect to MongoDB...');
+      const reconnected = await connectDB();
+      if (reconnected) {
         console.log('Reconnection successful');
-      } catch (reconnectError) {
-        console.error('Reconnection failed:', reconnectError);
+      } else {
+        console.error('Reconnection failed');
       }
       
       return res.status(500).json({ 
