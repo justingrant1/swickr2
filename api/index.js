@@ -156,33 +156,59 @@ app.post('/api/auth/register', async (req, res) => {
     }
     
     // Check if user already exists by username
-    const { data: existingUserByUsername, error: findUsernameError } = await supabase
-      .from('users')
-      .select('*')
-      .eq('username', username);
+    let existingUserByUsername = null;
+    let findUsernameError = null;
     
-    if (findUsernameError) {
+    try {
+      const response = await supabase
+        .from('users')
+        .select('*')
+        .eq('username', username);
+      
+      existingUserByUsername = response.data;
+      findUsernameError = response.error;
+      
+      console.log('Username check response:', response);
+    } catch (error) {
+      console.error('Error in username check:', error);
+      findUsernameError = error;
+    }
+    
+    if (findUsernameError && findUsernameError.code !== 'PGRST116') {
       console.error('Error checking existing username:', findUsernameError);
       return res.status(500).json({ 
         error: { 
           message: 'Database error when checking username', 
-          details: findUsernameError.message 
+          details: findUsernameError.message || 'Unknown error' 
         } 
       });
     }
     
     // Check if user already exists by email
-    const { data: existingUserByEmail, error: findEmailError } = await supabase
-      .from('users')
-      .select('*')
-      .eq('email', email);
+    let existingUserByEmail = null;
+    let findEmailError = null;
     
-    if (findEmailError) {
+    try {
+      const response = await supabase
+        .from('users')
+        .select('*')
+        .eq('email', email);
+      
+      existingUserByEmail = response.data;
+      findEmailError = response.error;
+      
+      console.log('Email check response:', response);
+    } catch (error) {
+      console.error('Error in email check:', error);
+      findEmailError = error;
+    }
+    
+    if (findEmailError && findEmailError.code !== 'PGRST116') {
       console.error('Error checking existing email:', findEmailError);
       return res.status(500).json({ 
         error: { 
           message: 'Database error when checking email', 
-          details: findEmailError.message 
+          details: findEmailError.message || 'Unknown error' 
         } 
       });
     }
@@ -402,11 +428,37 @@ app.get('/api/users/me', authenticate, async (req, res) => {
 app.get('/api/messages', authenticate, async (req, res) => {
   try {
     // Get messages where user is sender or recipient
-    const { data: messages, error } = await supabase
-      .from('messages')
-      .select('*')
-      .or(`userId.eq.${req.user.userId},recipientId.eq.${req.user.userId}`)
-      .order('timestamp', { ascending: true });
+    let messages = null;
+    let error = null;
+    
+    try {
+      // Get messages sent by the user
+      const sentResponse = await supabase
+        .from('messages')
+        .select('*')
+        .eq('userId', req.user.userId);
+      
+      // Get messages received by the user
+      const receivedResponse = await supabase
+        .from('messages')
+        .select('*')
+        .eq('recipientId', req.user.userId);
+      
+      if (sentResponse.error) {
+        error = sentResponse.error;
+        console.error('Error getting sent messages:', error);
+      } else if (receivedResponse.error) {
+        error = receivedResponse.error;
+        console.error('Error getting received messages:', error);
+      } else {
+        // Combine and sort messages
+        messages = [...(sentResponse.data || []), ...(receivedResponse.data || [])];
+        messages.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+      }
+    } catch (err) {
+      error = err;
+      console.error('Error in messages query:', err);
+    }
     
     if (error) {
       console.error('Error getting messages:', error);
