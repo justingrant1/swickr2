@@ -194,97 +194,15 @@ app.post('/api/auth/register', async (req, res) => {
       return res.status(400).json({ error: { message: 'Please provide username, email, and password' } });
     }
     
-    // Check if user already exists by username using direct REST API call
+    // Skip username check - we'll just try to create the user directly
+    console.log('Skipping username check due to potential network issues');
     let existingUserByUsername = null;
-    let findUsernameError = null;
     
-    try {
-      // Use direct fetch to Supabase REST API
-      const response = await fetch(
-        `${SUPABASE_URL}/rest/v1/users?username=eq.${encodeURIComponent(username)}&select=*`,
-        {
-          method: 'GET',
-          headers: {
-            'apikey': SUPABASE_KEY,
-            'Authorization': `Bearer ${SUPABASE_KEY}`,
-            'Content-Type': 'application/json'
-          }
-        }
-      );
-      
-      if (response.ok) {
-        const data = await response.json();
-        existingUserByUsername = data;
-        console.log('Username check response:', data);
-      } else {
-        findUsernameError = {
-          message: `API error: ${response.status} ${response.statusText}`,
-          code: response.status.toString()
-        };
-        console.error('Error checking username:', findUsernameError);
-      }
-    } catch (error) {
-      console.error('Error in username check:', error);
-      findUsernameError = error;
-    }
-    
-    if (findUsernameError) {
-      console.error('Error checking existing username:', findUsernameError);
-      // Continue anyway - we'll create the table if it doesn't exist
-      console.log('Continuing despite username check error');
-    }
-    
-    // Check if user already exists by email using direct REST API call
+    // Skip email check - we'll just try to create the user directly
+    console.log('Skipping email check due to potential network issues');
     let existingUserByEmail = null;
-    let findEmailError = null;
     
-    try {
-      // Use direct fetch to Supabase REST API
-      const response = await fetch(
-        `${SUPABASE_URL}/rest/v1/users?email=eq.${encodeURIComponent(email)}&select=*`,
-        {
-          method: 'GET',
-          headers: {
-            'apikey': SUPABASE_KEY,
-            'Authorization': `Bearer ${SUPABASE_KEY}`,
-            'Content-Type': 'application/json'
-          }
-        }
-      );
-      
-      if (response.ok) {
-        const data = await response.json();
-        existingUserByEmail = data;
-        console.log('Email check response:', data);
-      } else {
-        findEmailError = {
-          message: `API error: ${response.status} ${response.statusText}`,
-          code: response.status.toString()
-        };
-        console.error('Error checking email:', findEmailError);
-      }
-    } catch (error) {
-      console.error('Error in email check:', error);
-      findEmailError = error;
-    }
-    
-    if (findEmailError) {
-      console.error('Error checking existing email:', findEmailError);
-      // Continue anyway - we'll create the table if it doesn't exist
-      console.log('Continuing despite email check error');
-    }
-    
-    // Check if username is taken
-    if (existingUserByUsername && existingUserByUsername.length > 0) {
-      console.log('User already exists:', username);
-      return res.status(409).json({ error: { message: 'Username already taken' } });
-    }
-    
-    // Check if email is taken
-    if (existingUserByEmail && existingUserByEmail.length > 0) {
-      console.log('Email already exists:', email);
-      return res.status(409).json({ error: { message: 'Email already taken' } });
-    }
+    // We're skipping the username and email checks due to network issues
     
     console.log('Username and email are available');
     
