@@ -20,76 +20,67 @@ const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://jgrant:Bowery85!@c
 // Define schemas and models
 let User, Message;
 
-// Define models function
-const defineModels = () => {
-  console.log('Defining database models');
-  
-  // Define User Schema if not already defined
-  if (!mongoose.models.User) {
-    const userSchema = new mongoose.Schema({
-      username: { type: String, required: true },
-      email: { type: String, required: true },
-      password_hash: { type: String, required: true },
-      full_name: { type: String },
-      status: { type: String, default: 'online' },
-      created_at: { type: Date, default: Date.now }
-    });
-    
-    // Remove unique index which can cause issues in serverless environments
-    userSchema.index({ username: 1 }, { unique: true });
-    userSchema.index({ email: 1 }, { unique: true });
-    
-    User = mongoose.model('User', userSchema);
-  } else {
-    User = mongoose.models.User;
-  }
-  
-  // Define Message Schema if not already defined
-  if (!mongoose.models.Message) {
-    const messageSchema = new mongoose.Schema({
-      content: { type: String, required: true },
-      userId: { type: String, required: true },
-      recipientId: { type: String, required: true },
-      timestamp: { type: Date, default: Date.now }
-    });
-    
-    Message = mongoose.model('Message', messageSchema);
-  } else {
-    Message = mongoose.models.Message;
-  }
-  
-  return { User, Message };
-};
-
-// Connect to MongoDB
-mongoose.connect(MONGODB_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-})
-.then(() => {
-  console.log('MongoDB connected');
-  // Define models immediately after connection
-  const models = defineModels();
-  User = models.User;
-  Message = models.Message;
-  // Create default user after models are defined
-  createDefaultUser();
-})
-.catch(err => {
-  console.error('MongoDB connection error:', err);
-  // Don't throw error in serverless environment
-  if (!process.env.VERCEL) {
-    throw err;
-  }
+// Define User Schema
+const userSchema = new mongoose.Schema({
+  username: { type: String, required: true },
+  email: { type: String, required: true },
+  password_hash: { type: String, required: true },
+  full_name: { type: String },
+  status: { type: String, default: 'online' },
+  created_at: { type: Date, default: Date.now }
 });
 
-// Also define models on the connected event as a backup
+// Define Message Schema
+const messageSchema = new mongoose.Schema({
+  content: { type: String, required: true },
+  userId: { type: String, required: true },
+  recipientId: { type: String, required: true },
+  timestamp: { type: Date, default: Date.now }
+});
+
+// Initialize models
+try {
+  // Check if models are already defined
+  if (mongoose.models.User) {
+    User = mongoose.models.User;
+  } else {
+    User = mongoose.model('User', userSchema);
+  }
+  
+  if (mongoose.models.Message) {
+    Message = mongoose.models.Message;
+  } else {
+    Message = mongoose.model('Message', messageSchema);
+  }
+} catch (error) {
+  console.error('Error initializing models:', error);
+}
+
+// Connect to MongoDB - using a simpler approach
+mongoose.connect(MONGODB_URI)
+  .then(() => {
+    console.log('MongoDB connected successfully');
+    // Create default user
+    createDefaultUser();
+  })
+  .catch(err => {
+    console.error('MongoDB connection error:', err);
+  });
+
+// Fallback connection event handler
 mongoose.connection.on('connected', () => {
-  console.log('Mongoose connection established, defining models (backup)');
-  const models = defineModels();
-  User = models.User;
-  Message = models.Message;
+  console.log('MongoDB connected event fired');
   createDefaultUser();
+});
+
+// Handle connection errors
+mongoose.connection.on('error', (err) => {
+  console.error('MongoDB connection error event:', err);
+});
+
+// Handle disconnection
+mongoose.connection.on('disconnected', () => {
+  console.log('MongoDB disconnected');
 });
 
 // Add default user if none exists
@@ -153,16 +144,36 @@ const authenticate = (req, res, next) => {
 };
 
 // Helper function to wait for models to be defined
-const waitForModels = async (maxAttempts = 5, delay = 500) => {
+const waitForModels = async (maxAttempts = 10, delay = 1000) => {
   let attempts = 0;
   while (attempts < maxAttempts) {
     if (User && Message) {
+      console.log('Models are now ready');
       return true;
     }
+    
+    // Try to initialize models again
+    try {
+      if (!User && mongoose.models.User) {
+        User = mongoose.models.User;
+      } else if (!User) {
+        User = mongoose.model('User', userSchema);
+      }
+      
+      if (!Message && mongoose.models.Message) {
+        Message = mongoose.models.Message;
+      } else if (!Message) {
+        Message = mongoose.model('Message', messageSchema);
+      }
+    } catch (error) {
+      console.error(`Error initializing models during wait (attempt ${attempts + 1}):`, error);
+    }
+    
     console.log(`Models not ready, waiting... (attempt ${attempts + 1}/${maxAttempts})`);
     await new Promise(resolve => setTimeout(resolve, delay));
     attempts++;
   }
+  console.error('Failed to initialize models after maximum attempts');
   return false;
 };
 
