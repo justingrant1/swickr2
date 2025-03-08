@@ -1,9 +1,11 @@
 // Serverless API handler for Vercel deployment
+require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const { v4: uuidv4 } = require('uuid');
+const mongoose = require('mongoose');
 
 // Create Express app
 const app = express();
@@ -12,20 +14,60 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Mock user database for demonstration
-const users = [
-  {
-    id: "6dcbfde7-50a8-4c0c-b5f9-b525bfb3992a",
-    username: "testuser1",
-    email: "user1@example.com",
-    password_hash: "$2b$10$9YvZUKJogb/7bjzuS3Yy8.bJ1gBCuh3WIswv99TTYy.eSSTDf.Ouji", // "password"
-    full_name: "Test User One",
-    status: "online"
-  }
-];
+// MongoDB Connection
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://jgrant:Bowery85!@cluster1.cftfrg0.mongodb.net/?retryWrites=true&w=majority&appName=Cluster1';
 
-// Mock messages database
-const messages = [];
+// Connect to MongoDB
+mongoose.connect(MONGODB_URI, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
+})
+.then(() => console.log('MongoDB connected'))
+.catch(err => console.error('MongoDB connection error:', err));
+
+// Define User Schema
+const userSchema = new mongoose.Schema({
+  username: { type: String, required: true, unique: true },
+  email: { type: String, required: true, unique: true },
+  password_hash: { type: String, required: true },
+  full_name: { type: String },
+  status: { type: String, default: 'online' },
+  created_at: { type: Date, default: Date.now }
+});
+
+// Define Message Schema
+const messageSchema = new mongoose.Schema({
+  content: { type: String, required: true },
+  userId: { type: String, required: true },
+  recipientId: { type: String, required: true },
+  timestamp: { type: Date, default: Date.now }
+});
+
+// Create models
+const User = mongoose.models.User || mongoose.model('User', userSchema);
+const Message = mongoose.models.Message || mongoose.model('Message', messageSchema);
+
+// Add default user if none exists
+const createDefaultUser = async () => {
+  try {
+    const existingUser = await User.findOne({ username: 'testuser1' });
+    if (!existingUser) {
+      const passwordHash = await bcrypt.hash('password', 10);
+      await User.create({
+        username: 'testuser1',
+        email: 'user1@example.com',
+        password_hash: passwordHash,
+        full_name: 'Test User One',
+        status: 'online'
+      });
+      console.log('Default user created');
+    }
+  } catch (error) {
+    console.error('Error creating default user:', error);
+  }
+};
+
+createDefaultUser();
 
 // JWT Secret
 const JWT_SECRET = process.env.JWT_SECRET || 'your_production_jwt_secret_key_here';
@@ -34,7 +76,7 @@ const JWT_SECRET = process.env.JWT_SECRET || 'your_production_jwt_secret_key_her
 app.get('/api/health', (req, res) => {
   res.status(200).json({ 
     status: 'ok', 
-    message: 'Swickr API is running',
+    message: 'Swickr API is running with MongoDB',
     timestamp: new Date().toISOString()
   });
 });
@@ -67,7 +109,7 @@ app.post('/api/auth/register', async (req, res) => {
     }
     
     // Check if user already exists
-    const existingUser = users.find(u => u.username === username || u.email === email);
+    const existingUser = await User.findOne({ $or: [{ username }, { email }] });
     if (existingUser) {
       return res.status(409).json({ error: { message: 'Username or email already taken' } });
     }
@@ -77,27 +119,23 @@ app.post('/api/auth/register', async (req, res) => {
     const passwordHash = await bcrypt.hash(password, salt);
     
     // Create new user
-    const newUser = {
-      id: uuidv4(),
+    const newUser = await User.create({
       username,
       email,
       password_hash: passwordHash,
       full_name: fullName || username,
       status: 'online'
-    };
-    
-    // Add to mock database
-    users.push(newUser);
+    });
     
     // Generate tokens
     const accessToken = jwt.sign(
-      { userId: newUser.id, username: newUser.username, email: newUser.email },
+      { userId: newUser._id, username: newUser.username, email: newUser.email },
       JWT_SECRET,
       { expiresIn: '15m' }
     );
     
     const refreshToken = jwt.sign(
-      { userId: newUser.id },
+      { userId: newUser._id },
       JWT_SECRET,
       { expiresIn: '7d' }
     );
@@ -105,7 +143,7 @@ app.post('/api/auth/register', async (req, res) => {
     // Return user data and tokens
     res.status(201).json({
       user: {
-        id: newUser.id,
+        id: newUser._id,
         username: newUser.username,
         email: newUser.email,
         fullName: newUser.full_name,
@@ -133,7 +171,7 @@ app.post('/api/auth/login', async (req, res) => {
     }
     
     // Find user
-    const user = users.find(u => u.username === username);
+    const user = await User.findOne({ username });
     if (!user) {
       return res.status(401).json({ error: { message: 'Invalid credentials' } });
     }
@@ -144,15 +182,19 @@ app.post('/api/auth/login', async (req, res) => {
       return res.status(401).json({ error: { message: 'Invalid credentials' } });
     }
     
+    // Update user status
+    user.status = 'online';
+    await user.save();
+    
     // Generate tokens
     const accessToken = jwt.sign(
-      { userId: user.id, username: user.username, email: user.email },
+      { userId: user._id, username: user.username, email: user.email },
       JWT_SECRET,
       { expiresIn: '15m' }
     );
     
     const refreshToken = jwt.sign(
-      { userId: user.id },
+      { userId: user._id },
       JWT_SECRET,
       { expiresIn: '7d' }
     );
@@ -160,7 +202,7 @@ app.post('/api/auth/login', async (req, res) => {
     // Return user data and tokens
     res.status(200).json({
       user: {
-        id: user.id,
+        id: user._id,
         username: user.username,
         email: user.email,
         fullName: user.full_name,
@@ -178,46 +220,84 @@ app.post('/api/auth/login', async (req, res) => {
 });
 
 // Get user profile
-app.get('/api/users/me', authenticate, (req, res) => {
-  const user = users.find(u => u.id === req.user.userId);
-  
-  if (!user) {
-    return res.status(404).json({ error: { message: 'User not found' } });
+app.get('/api/users/me', authenticate, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.userId);
+    
+    if (!user) {
+      return res.status(404).json({ error: { message: 'User not found' } });
+    }
+    
+    res.json({
+      id: user._id,
+      username: user.username,
+      email: user.email,
+      fullName: user.full_name,
+      status: user.status
+    });
+  } catch (error) {
+    console.error('Get user error:', error);
+    res.status(500).json({ error: { message: 'Failed to get user profile' } });
   }
-  
-  res.json({
-    id: user.id,
-    username: user.username,
-    email: user.email,
-    fullName: user.full_name,
-    status: user.status
-  });
 });
 
 // Get messages
-app.get('/api/messages', authenticate, (req, res) => {
-  res.json(messages.filter(m => m.userId === req.user.userId || m.recipientId === req.user.userId));
+app.get('/api/messages', authenticate, async (req, res) => {
+  try {
+    const messages = await Message.find({
+      $or: [
+        { userId: req.user.userId },
+        { recipientId: req.user.userId }
+      ]
+    }).sort({ timestamp: 1 });
+    
+    res.json(messages);
+  } catch (error) {
+    console.error('Get messages error:', error);
+    res.status(500).json({ error: { message: 'Failed to get messages' } });
+  }
 });
 
 // Send message
-app.post('/api/messages', authenticate, (req, res) => {
-  const { content, recipientId } = req.body;
-  
-  if (!content || !recipientId) {
-    return res.status(400).json({ error: { message: 'Content and recipientId are required' } });
+app.post('/api/messages', authenticate, async (req, res) => {
+  try {
+    const { content, recipientId } = req.body;
+    
+    if (!content || !recipientId) {
+      return res.status(400).json({ error: { message: 'Content and recipientId are required' } });
+    }
+    
+    const newMessage = await Message.create({
+      content,
+      userId: req.user.userId,
+      recipientId,
+      timestamp: new Date()
+    });
+    
+    res.status(201).json(newMessage);
+  } catch (error) {
+    console.error('Send message error:', error);
+    res.status(500).json({ error: { message: 'Failed to send message' } });
   }
-  
-  const newMessage = {
-    id: uuidv4(),
-    content,
-    userId: req.user.userId,
-    recipientId,
-    timestamp: new Date().toISOString()
-  };
-  
-  messages.push(newMessage);
-  
-  res.status(201).json(newMessage);
+});
+
+// Get contacts
+app.get('/api/contacts', authenticate, async (req, res) => {
+  try {
+    // Find all users except the current user
+    const contacts = await User.find({ _id: { $ne: req.user.userId } })
+      .select('_id username full_name status');
+    
+    res.json(contacts.map(contact => ({
+      id: contact._id,
+      username: contact.username,
+      fullName: contact.full_name,
+      status: contact.status
+    })));
+  } catch (error) {
+    console.error('Get contacts error:', error);
+    res.status(500).json({ error: { message: 'Failed to get contacts' } });
+  }
 });
 
 // Export the Express API

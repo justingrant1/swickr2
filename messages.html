@@ -304,6 +304,97 @@
                 window.location.href = '/';
             });
             
+            // Load contacts
+            const loadContacts = async () => {
+                try {
+                    const response = await fetch('/api/contacts', {
+                        headers: {
+                            'Authorization': `Bearer ${tokens.accessToken}`
+                        }
+                    });
+                    
+                    if (!response.ok) {
+                        throw new Error('Failed to load contacts');
+                    }
+                    
+                    const contacts = await response.json();
+                    
+                    // Clear existing contacts except the first one (Test User)
+                    const contactsList = document.getElementById('contacts-list');
+                    const firstContact = contactsList.firstElementChild;
+                    contactsList.innerHTML = '';
+                    
+                    if (firstContact) {
+                        contactsList.appendChild(firstContact);
+                    }
+                    
+                    // Add contacts from API
+                    contacts.forEach(contact => {
+                        const contactElement = document.createElement('div');
+                        contactElement.className = 'contact';
+                        contactElement.dataset.id = contact.id;
+                        
+                        const avatar = document.createElement('div');
+                        avatar.className = 'contact-avatar';
+                        avatar.textContent = contact.username.charAt(0).toUpperCase();
+                        
+                        const details = document.createElement('div');
+                        details.className = 'contact-details';
+                        
+                        const name = document.createElement('div');
+                        name.className = 'contact-name';
+                        name.textContent = contact.fullName || contact.username;
+                        
+                        const status = document.createElement('div');
+                        status.className = 'contact-status';
+                        status.textContent = contact.status || 'Online';
+                        
+                        details.appendChild(name);
+                        details.appendChild(status);
+                        
+                        contactElement.appendChild(avatar);
+                        contactElement.appendChild(details);
+                        
+                        // Add click event to select the contact
+                        contactElement.addEventListener('click', () => {
+                            // Remove active class from all contacts
+                            document.querySelectorAll('.contact').forEach(c => {
+                                c.classList.remove('active');
+                            });
+                            
+                            // Add active class to this contact
+                            contactElement.classList.add('active');
+                            
+                            // Update chat title
+                            document.getElementById('chat-title').textContent = contact.fullName || contact.username;
+                            
+                            // Clear messages
+                            const messagesContainer = document.getElementById('messages-container');
+                            messagesContainer.innerHTML = '';
+                            
+                            // Add welcome message
+                            const welcomeMessage = document.createElement('div');
+                            welcomeMessage.className = 'message received';
+                            welcomeMessage.textContent = `Hello! You are now connected with ${contact.fullName || contact.username}.`;
+                            
+                            const timeElement = document.createElement('div');
+                            timeElement.className = 'message-time';
+                            timeElement.textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                            
+                            welcomeMessage.appendChild(timeElement);
+                            messagesContainer.appendChild(welcomeMessage);
+                        });
+                        
+                        contactsList.appendChild(contactElement);
+                    });
+                } catch (error) {
+                    console.error('Error loading contacts:', error);
+                }
+            };
+            
+            // Load contacts on page load
+            loadContacts();
+            
             // Set up add contact button
             document.getElementById('add-contact-button').addEventListener('click', () => {
                 // Create a modal for adding a contact
@@ -401,7 +492,7 @@
                     document.body.removeChild(modal);
                 });
                 
-                addButton.addEventListener('click', () => {
+                addButton.addEventListener('click', async () => {
                     const username = usernameInput.value.trim();
                     
                     if (!username) {
@@ -410,70 +501,36 @@
                         return;
                     }
                     
-                    // In a real app, we would send a request to the API to add the contact
-                    // For this demo, we'll just add a new contact to the UI
-                    
-                    // Create a new contact element
-                    const contactsList = document.getElementById('contacts-list');
-                    const newContact = document.createElement('div');
-                    newContact.className = 'contact';
-                    
-                    const avatar = document.createElement('div');
-                    avatar.className = 'contact-avatar';
-                    avatar.textContent = username.charAt(0).toUpperCase();
-                    
-                    const details = document.createElement('div');
-                    details.className = 'contact-details';
-                    
-                    const name = document.createElement('div');
-                    name.className = 'contact-name';
-                    name.textContent = username;
-                    
-                    const status = document.createElement('div');
-                    status.className = 'contact-status';
-                    status.textContent = 'Online';
-                    
-                    details.appendChild(name);
-                    details.appendChild(status);
-                    
-                    newContact.appendChild(avatar);
-                    newContact.appendChild(details);
-                    
-                    // Add click event to select the contact
-                    newContact.addEventListener('click', () => {
-                        // Remove active class from all contacts
-                        document.querySelectorAll('.contact').forEach(contact => {
-                            contact.classList.remove('active');
+                    try {
+                        // In a real app, we would send a request to the API to add the contact
+                        // For this demo, we'll just register a new user with this username
+                        const response = await fetch('/api/auth/register', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({
+                                username,
+                                email: `${username}@example.com`,
+                                password: 'password123',
+                                fullName: username
+                            })
                         });
                         
-                        // Add active class to this contact
-                        newContact.classList.add('active');
+                        if (!response.ok) {
+                            const data = await response.json();
+                            throw new Error(data.error?.message || 'Failed to add contact');
+                        }
                         
-                        // Update chat title
-                        document.getElementById('chat-title').textContent = username;
+                        // Reload contacts
+                        loadContacts();
                         
-                        // Clear messages
-                        const messagesContainer = document.getElementById('messages-container');
-                        messagesContainer.innerHTML = '';
-                        
-                        // Add welcome message
-                        const welcomeMessage = document.createElement('div');
-                        welcomeMessage.className = 'message received';
-                        welcomeMessage.textContent = `Hello! You are now connected with ${username}.`;
-                        
-                        const timeElement = document.createElement('div');
-                        timeElement.className = 'message-time';
-                        timeElement.textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                        
-                        welcomeMessage.appendChild(timeElement);
-                        messagesContainer.appendChild(welcomeMessage);
-                    });
-                    
-                    // Add the new contact to the list
-                    contactsList.appendChild(newContact);
-                    
-                    // Close the modal
-                    document.body.removeChild(modal);
+                        // Close the modal
+                        document.body.removeChild(modal);
+                    } catch (error) {
+                        errorMessage.textContent = error.message;
+                        errorMessage.style.display = 'block';
+                    }
                 });
                 
                 // Close modal when clicking outside
