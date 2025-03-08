@@ -53,30 +53,68 @@ const authenticate = (req, res, next) => {
 // Initialize Supabase tables if they don't exist
 const initializeSupabaseTables = async () => {
   try {
-    console.log('Checking if Supabase tables exist...');
+    console.log('Creating Supabase tables if they don\'t exist...');
     
-    // Check if users table exists
-    const { data: usersTable, error: usersError } = await supabase
-      .from('users')
-      .select('id')
-      .limit(1);
-    
-    if (usersError && usersError.code === '42P01') { // Table doesn't exist
-      console.log('Users table does not exist. It will be created automatically when needed.');
-    } else {
-      console.log('Users table already exists');
+    // Create users table if it doesn't exist
+    try {
+      const { error: createUsersError } = await supabase.rpc('create_users_table_if_not_exists', {});
+      
+      if (createUsersError) {
+        console.error('Error creating users table:', createUsersError);
+        
+        // Fallback: Create users table directly
+        const { error: createTableError } = await supabase.query(`
+          CREATE TABLE IF NOT EXISTS public.users (
+            id UUID PRIMARY KEY,
+            username TEXT UNIQUE NOT NULL,
+            email TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
+            full_name TEXT,
+            status TEXT DEFAULT 'offline',
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+          );
+        `);
+        
+        if (createTableError) {
+          console.error('Error creating users table directly:', createTableError);
+        } else {
+          console.log('Users table created directly');
+        }
+      } else {
+        console.log('Users table created or already exists');
+      }
+    } catch (usersError) {
+      console.error('Error in users table creation:', usersError);
     }
     
-    // Check if messages table exists
-    const { data: messagesTable, error: messagesError } = await supabase
-      .from('messages')
-      .select('id')
-      .limit(1);
-    
-    if (messagesError && messagesError.code === '42P01') { // Table doesn't exist
-      console.log('Messages table does not exist. It will be created automatically when needed.');
-    } else {
-      console.log('Messages table already exists');
+    // Create messages table if it doesn't exist
+    try {
+      const { error: createMessagesError } = await supabase.rpc('create_messages_table_if_not_exists', {});
+      
+      if (createMessagesError) {
+        console.error('Error creating messages table:', createMessagesError);
+        
+        // Fallback: Create messages table directly
+        const { error: createTableError } = await supabase.query(`
+          CREATE TABLE IF NOT EXISTS public.messages (
+            id UUID PRIMARY KEY,
+            content TEXT NOT NULL,
+            userId UUID NOT NULL,
+            recipientId UUID NOT NULL,
+            timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+          );
+        `);
+        
+        if (createTableError) {
+          console.error('Error creating messages table directly:', createTableError);
+        } else {
+          console.log('Messages table created directly');
+        }
+      } else {
+        console.log('Messages table created or already exists');
+      }
+    } catch (messagesError) {
+      console.error('Error in messages table creation:', messagesError);
     }
     
     // Create default user if it doesn't exist
