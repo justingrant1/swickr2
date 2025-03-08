@@ -15,7 +15,10 @@ app.use(cors());
 app.use(express.json());
 
 // MongoDB Connection
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://jgrant:Bowery85!@cluster1.cftfrg0.mongodb.net/?retryWrites=true&w=majority&appName=Cluster1';
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://jgrant:Bowery85!@cluster1.cftfrg0.mongodb.net/swickr?retryWrites=true&w=majority';
+
+// Log the MongoDB URI (without password)
+console.log('MongoDB URI:', MONGODB_URI.replace(/\/\/([^:]+):([^@]+)@/, '//***:***@'));
 
 // Define schemas and models
 let User, Message;
@@ -202,20 +205,50 @@ app.post('/api/auth/register', async (req, res) => {
     
     // Check if user already exists
     try {
+      // Check connection state
+      if (mongoose.connection.readyState !== 1) {
+        console.error('MongoDB not connected when checking user. State:', mongoose.connection.readyState);
+        return res.status(503).json({ 
+          error: { 
+            message: 'Database connection not ready', 
+            details: `Connection state: ${mongoose.connection.readyState}` 
+          } 
+        });
+      }
+      
+      console.log('Checking if username exists:', username);
       const existingUser = await User.findOne({ username });
       if (existingUser) {
         console.log('User already exists:', existingUser.username);
         return res.status(409).json({ error: { message: 'Username already taken' } });
       }
       
+      console.log('Checking if email exists:', email);
       const existingEmail = await User.findOne({ email });
       if (existingEmail) {
         console.log('Email already exists:', email);
         return res.status(409).json({ error: { message: 'Email already taken' } });
       }
+      
+      console.log('Username and email are available');
     } catch (findError) {
       console.error('Error checking existing user:', findError);
-      return res.status(500).json({ error: { message: 'Database error when checking user', details: findError.message } });
+      // Try to reconnect to MongoDB
+      try {
+        console.log('Attempting to reconnect to MongoDB...');
+        await mongoose.connect(MONGODB_URI);
+        console.log('Reconnection successful');
+      } catch (reconnectError) {
+        console.error('Reconnection failed:', reconnectError);
+      }
+      
+      return res.status(500).json({ 
+        error: { 
+          message: 'Database error when checking user', 
+          details: findError.message,
+          stack: process.env.NODE_ENV === 'development' ? findError.stack : undefined
+        } 
+      });
     }
     
     // Hash password
