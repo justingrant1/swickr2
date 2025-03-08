@@ -23,7 +23,13 @@ mongoose.connect(MONGODB_URI, {
   useUnifiedTopology: true,
 })
 .then(() => console.log('MongoDB connected'))
-.catch(err => console.error('MongoDB connection error:', err));
+.catch(err => {
+  console.error('MongoDB connection error:', err);
+  // Don't throw error in serverless environment
+  if (!process.env.VERCEL) {
+    throw err;
+  }
+});
 
 // Define User Schema
 const userSchema = new mongoose.Schema({
@@ -101,31 +107,52 @@ const authenticate = (req, res, next) => {
 // Register endpoint
 app.post('/api/auth/register', async (req, res) => {
   try {
+    console.log('Registration request received:', req.body);
     const { username, email, password, fullName } = req.body;
     
     // Validate input
     if (!username || !email || !password) {
+      console.log('Missing required fields');
       return res.status(400).json({ error: { message: 'Please provide username, email, and password' } });
     }
     
     // Check if user already exists
-    const existingUser = await User.findOne({ $or: [{ username }, { email }] });
-    if (existingUser) {
-      return res.status(409).json({ error: { message: 'Username or email already taken' } });
+    try {
+      const existingUser = await User.findOne({ $or: [{ username }, { email }] });
+      if (existingUser) {
+        console.log('User already exists:', existingUser.username);
+        return res.status(409).json({ error: { message: 'Username or email already taken' } });
+      }
+    } catch (findError) {
+      console.error('Error checking existing user:', findError);
+      return res.status(500).json({ error: { message: 'Database error when checking user', details: findError.message } });
     }
     
     // Hash password
-    const salt = await bcrypt.genSalt(10);
-    const passwordHash = await bcrypt.hash(password, salt);
+    let passwordHash;
+    try {
+      const salt = await bcrypt.genSalt(10);
+      passwordHash = await bcrypt.hash(password, salt);
+    } catch (hashError) {
+      console.error('Error hashing password:', hashError);
+      return res.status(500).json({ error: { message: 'Error processing password', details: hashError.message } });
+    }
     
     // Create new user
-    const newUser = await User.create({
-      username,
-      email,
-      password_hash: passwordHash,
-      full_name: fullName || username,
-      status: 'online'
-    });
+    let newUser;
+    try {
+      newUser = await User.create({
+        username,
+        email,
+        password_hash: passwordHash,
+        full_name: fullName || username,
+        status: 'online'
+      });
+      console.log('User created successfully:', newUser.username);
+    } catch (createError) {
+      console.error('Error creating user:', createError);
+      return res.status(500).json({ error: { message: 'Error creating user', details: createError.message } });
+    }
     
     // Generate tokens
     const accessToken = jwt.sign(
@@ -156,35 +183,62 @@ app.post('/api/auth/register', async (req, res) => {
     });
   } catch (error) {
     console.error('Registration error:', error);
-    res.status(500).json({ error: { message: 'Registration failed' } });
+    res.status(500).json({ 
+      error: { 
+        message: 'Registration failed', 
+        details: error.message,
+        stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      } 
+    });
   }
 });
 
 // Login endpoint
 app.post('/api/auth/login', async (req, res) => {
   try {
+    console.log('Login request received:', { username: req.body.username });
     const { username, password } = req.body;
     
     // Validate input
     if (!username || !password) {
+      console.log('Missing required fields');
       return res.status(400).json({ error: { message: 'Please provide username and password' } });
     }
     
     // Find user
-    const user = await User.findOne({ username });
-    if (!user) {
-      return res.status(401).json({ error: { message: 'Invalid credentials' } });
+    let user;
+    try {
+      user = await User.findOne({ username });
+      if (!user) {
+        console.log('User not found:', username);
+        return res.status(401).json({ error: { message: 'Invalid credentials' } });
+      }
+    } catch (findError) {
+      console.error('Error finding user:', findError);
+      return res.status(500).json({ error: { message: 'Database error when finding user', details: findError.message } });
     }
     
     // Verify password
-    const isMatch = await bcrypt.compare(password, user.password_hash);
-    if (!isMatch) {
-      return res.status(401).json({ error: { message: 'Invalid credentials' } });
+    let isMatch;
+    try {
+      isMatch = await bcrypt.compare(password, user.password_hash);
+      if (!isMatch) {
+        console.log('Invalid password for user:', username);
+        return res.status(401).json({ error: { message: 'Invalid credentials' } });
+      }
+    } catch (compareError) {
+      console.error('Error comparing passwords:', compareError);
+      return res.status(500).json({ error: { message: 'Error verifying password', details: compareError.message } });
     }
     
     // Update user status
-    user.status = 'online';
-    await user.save();
+    try {
+      user.status = 'online';
+      await user.save();
+    } catch (saveError) {
+      console.error('Error updating user status:', saveError);
+      // Continue even if status update fails
+    }
     
     // Generate tokens
     const accessToken = jwt.sign(
@@ -198,6 +252,8 @@ app.post('/api/auth/login', async (req, res) => {
       JWT_SECRET,
       { expiresIn: '7d' }
     );
+    
+    console.log('Login successful for user:', username);
     
     // Return user data and tokens
     res.status(200).json({
@@ -215,7 +271,13 @@ app.post('/api/auth/login', async (req, res) => {
     });
   } catch (error) {
     console.error('Login error:', error);
-    res.status(500).json({ error: { message: 'Login failed' } });
+    res.status(500).json({ 
+      error: { 
+        message: 'Login failed', 
+        details: error.message,
+        stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      } 
+    });
   }
 });
 
