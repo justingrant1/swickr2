@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Swickr - Messages</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f5f5f5;
+            color: #333;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        header {
+            background-color: #4a6ee0;
+            color: white;
+            padding: 1rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .logo {
+            font-size: 1.5rem;
+            font-weight: bold;
+        }
+        .user-info {
+            display: flex;
+            align-items: center;
+        }
+        .username {
+            margin-right: 1rem;
+        }
+        .logout-button {
+            background-color: rgba(255, 255, 255, 0.2);
+            border: none;
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        .logout-button:hover {
+            background-color: rgba(255, 255, 255, 0.3);
+        }
+        main {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+        .sidebar {
+            width: 300px;
+            background-color: white;
+            border-right: 1px solid #e0e0e0;
+            display: flex;
+            flex-direction: column;
+        }
+        .contacts-header {
+            padding: 1rem;
+            border-bottom: 1px solid #e0e0e0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .contacts-title {
+            font-weight: 600;
+            font-size: 1.1rem;
+        }
+        .add-contact {
+            background-color: #4a6ee0;
+            color: white;
+            border: none;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 1.2rem;
+            cursor: pointer;
+        }
+        .contacts-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 0.5rem 0;
+        }
+        .contact {
+            padding: 0.75rem 1rem;
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        .contact:hover {
+            background-color: #f5f5f5;
+        }
+        .contact.active {
+            background-color: #e3eafd;
+        }
+        .contact-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background-color: #4a6ee0;
+            color: white;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-weight: 600;
+            margin-right: 0.75rem;
+        }
+        .contact-details {
+            flex: 1;
+        }
+        .contact-name {
+            font-weight: 500;
+            margin-bottom: 0.25rem;
+        }
+        .contact-status {
+            font-size: 0.85rem;
+            color: #666;
+        }
+        .chat {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background-color: #f5f5f5;
+        }
+        .chat-header {
+            padding: 1rem;
+            background-color: white;
+            border-bottom: 1px solid #e0e0e0;
+            display: flex;
+            align-items: center;
+        }
+        .chat-title {
+            font-weight: 600;
+            font-size: 1.1rem;
+        }
+        .messages {
+            flex: 1;
+            padding: 1rem;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+        }
+        .message {
+            max-width: 70%;
+            padding: 0.75rem 1rem;
+            border-radius: 1rem;
+            margin-bottom: 1rem;
+            position: relative;
+        }
+        .message.sent {
+            align-self: flex-end;
+            background-color: #4a6ee0;
+            color: white;
+            border-bottom-right-radius: 0.25rem;
+        }
+        .message.received {
+            align-self: flex-start;
+            background-color: white;
+            border-bottom-left-radius: 0.25rem;
+        }
+        .message-time {
+            font-size: 0.75rem;
+            opacity: 0.8;
+            margin-top: 0.25rem;
+            text-align: right;
+        }
+        .input-area {
+            padding: 1rem;
+            background-color: white;
+            border-top: 1px solid #e0e0e0;
+            display: flex;
+            align-items: center;
+        }
+        .message-input {
+            flex: 1;
+            padding: 0.75rem;
+            border: 1px solid #ddd;
+            border-radius: 1.5rem;
+            font-size: 1rem;
+            margin-right: 0.75rem;
+        }
+        .message-input:focus {
+            outline: none;
+            border-color: #4a6ee0;
+        }
+        .send-button {
+            background-color: #4a6ee0;
+            color: white;
+            border: none;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+        }
+        .empty-state {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: #666;
+            padding: 2rem;
+            text-align: center;
+        }
+        .empty-state-icon {
+            font-size: 4rem;
+            margin-bottom: 1rem;
+            color: #ccc;
+        }
+        .empty-state-text {
+            font-size: 1.2rem;
+            margin-bottom: 0.5rem;
+        }
+        .empty-state-subtext {
+            font-size: 0.9rem;
+            max-width: 400px;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="logo">Swickr</div>
+        <div class="user-info">
+            <div class="username" id="current-username">Loading...</div>
+            <button class="logout-button" id="logout-button">Logout</button>
+        </div>
+    </header>
+    
+    <main>
+        <div class="sidebar">
+            <div class="contacts-header">
+                <div class="contacts-title">Contacts</div>
+                <button class="add-contact" id="add-contact-button">+</button>
+            </div>
+            <div class="contacts-list" id="contacts-list">
+                <!-- Contacts will be loaded here -->
+                <div class="contact active">
+                    <div class="contact-avatar">T</div>
+                    <div class="contact-details">
+                        <div class="contact-name">Test User</div>
+                        <div class="contact-status">Online</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="chat">
+            <div class="chat-header">
+                <div class="chat-title" id="chat-title">Test User</div>
+            </div>
+            
+            <div class="messages" id="messages-container">
+                <!-- Messages will be loaded here -->
+                <div class="message received">
+                    Hello! Welcome to Swickr.
+                    <div class="message-time">3:45 PM</div>
+                </div>
+                <div class="message sent">
+                    Thanks! This is a great messaging app.
+                    <div class="message-time">3:46 PM</div>
+                </div>
+            </div>
+            
+            <div class="input-area">
+                <input type="text" class="message-input" id="message-input" placeholder="Type a message...">
+                <button class="send-button" id="send-button">→</button>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        // Check if user is logged in
+        document.addEventListener('DOMContentLoaded', () => {
+            const userJson = localStorage.getItem('user');
+            const tokensJson = localStorage.getItem('tokens');
+            
+            if (!userJson || !tokensJson) {
+                // Not logged in, redirect to login page
+                window.location.href = '/register.html';
+                return;
+            }
+            
+            // Parse user data
+            const user = JSON.parse(userJson);
+            const tokens = JSON.parse(tokensJson);
+            
+            // Display username
+            document.getElementById('current-username').textContent = user.username;
+            
+            // Set up logout button
+            document.getElementById('logout-button').addEventListener('click', () => {
+                localStorage.removeItem('user');
+                localStorage.removeItem('tokens');
+                window.location.href = '/';
+            });
+            
+            // Set up message sending
+            const messageInput = document.getElementById('message-input');
+            const sendButton = document.getElementById('send-button');
+            const messagesContainer = document.getElementById('messages-container');
+            
+            const sendMessage = () => {
+                const content = messageInput.value.trim();
+                if (!content) return;
+                
+                // Create message element
+                const messageElement = document.createElement('div');
+                messageElement.className = 'message sent';
+                messageElement.textContent = content;
+                
+                const timeElement = document.createElement('div');
+                timeElement.className = 'message-time';
+                timeElement.textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                
+                messageElement.appendChild(timeElement);
+                messagesContainer.appendChild(messageElement);
+                
+                // Clear input
+                messageInput.value = '';
+                
+                // Scroll to bottom
+                messagesContainer.scrollTop = messagesContainer.scrollHeight;
+                
+                // Send to API
+                fetch('/api/messages', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${tokens.accessToken}`
+                    },
+                    body: JSON.stringify({
+                        content,
+                        recipientId: 'test-user-id' // In a real app, this would be the selected contact's ID
+                    })
+                }).catch(error => {
+                    console.error('Error sending message:', error);
+                });
+            };
+            
+            sendButton.addEventListener('click', sendMessage);
+            messageInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    sendMessage();
+                }
+            });
+            
+            // Load messages
+            fetch('/api/messages', {
+                headers: {
+                    'Authorization': `Bearer ${tokens.accessToken}`
+                }
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Failed to load messages');
+                }
+                return response.json();
+            })
+            .then(messages => {
+                // In a real app, we would display the messages here
+                console.log('Messages loaded:', messages);
+            })
+            .catch(error => {
+                console.error('Error loading messages:', error);
+            });
+        });
+    </script>
+</body>
+</html>
