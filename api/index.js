@@ -212,27 +212,66 @@ app.post('/api/auth/register', async (req, res) => {
     
     // Create new user
     const userId = uuidv4();
-    const { data: newUser, error: createError } = await supabase
-      .from('users')
-      .insert([
-        {
-          id: userId,
-          username,
-          email,
-          password_hash: passwordHash,
-          full_name: fullName || username,
-          status: 'online',
-          created_at: new Date()
-        }
-      ])
-      .select();
+    let newUser = null;
+    let createError = null;
+    
+    try {
+      // First, try to create the users table if it doesn't exist
+      try {
+        console.log('Attempting to create users table if it does not exist...');
+        await supabase.query(`
+          CREATE TABLE IF NOT EXISTS public.users (
+            id UUID PRIMARY KEY,
+            username TEXT UNIQUE NOT NULL,
+            email TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
+            full_name TEXT,
+            status TEXT DEFAULT 'offline',
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+          );
+        `);
+        console.log('Users table created or already exists');
+      } catch (tableError) {
+        console.error('Error creating users table:', tableError);
+        // Continue anyway - the table might already exist
+      }
+      
+      // Now try to insert the user
+      console.log('Attempting to insert user...');
+      const response = await supabase
+        .from('users')
+        .insert([
+          {
+            id: userId,
+            username,
+            email,
+            password_hash: passwordHash,
+            full_name: fullName || username,
+            status: 'online',
+            created_at: new Date()
+          }
+        ])
+        .select();
+      
+      newUser = response.data;
+      createError = response.error;
+      
+      // Log the full response for debugging
+      console.log('User creation response:', JSON.stringify(response));
+    } catch (error) {
+      console.error('Exception during user creation:', error);
+      createError = error;
+    }
     
     if (createError) {
-      console.error('Error creating user:', createError);
+      console.error('Error creating user:', JSON.stringify(createError));
       return res.status(500).json({ 
         error: { 
           message: 'Error creating user', 
-          details: createError.message 
+          details: createError.message || 'Unknown error',
+          code: createError.code || 'UNKNOWN',
+          hint: createError.hint || 'No hint available',
+          fullError: JSON.stringify(createError)
         } 
       });
     }
