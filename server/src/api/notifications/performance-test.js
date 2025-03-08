@@ -8,7 +8,7 @@ const express = require('express');
 const router = express.Router();
 const NotificationService = require('../../services/NotificationService');
 const NotificationPerformanceMonitor = require('../../services/NotificationPerformanceMonitor');
-const { authenticateJWT } = require('../../middleware/auth');
+const authenticateJWT = require('../../middleware/auth');
 
 // Test state (in-memory for simplicity, would use Redis or similar in production)
 let testState = {

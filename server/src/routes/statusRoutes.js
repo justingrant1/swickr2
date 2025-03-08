@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const User = require('../models/User');
 const auth = require('../middleware/auth');
-const { io } = require('../socket');
+const { initializeSocketServer } = require('../websocket/socket');
 
 /**
  * @route   GET /api/status

@@ -8,7 +8,7 @@ const express = require('express');
 const router = express.Router();
 const notificationService = require('../../services/NotificationService');
 const NotificationPerformanceMonitor = require('../../services/NotificationPerformanceMonitor');
-const { authenticate } = require('../../middleware/auth');
+const authenticate = require('../../middleware/auth');
 const { isAdmin } = require('../../middleware/roles');
 const logger = require('../../utils/logger');
 

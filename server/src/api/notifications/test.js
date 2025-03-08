@@ -7,7 +7,7 @@
 const express = require('express');
 const router = express.Router();
 const NotificationService = require('../../services/NotificationService');
-const { authenticateJWT } = require('../../middleware/auth');
+const authenticateJWT = require('../../middleware/auth');
 const logger = require('../../utils/logger');
 
 /**

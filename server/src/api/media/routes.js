@@ -5,11 +5,11 @@ const path = require('path');
 const fs = require('fs');
 const { 
   uploadMedia, 
-  getMedia, 
+  getMediaById, 
   getMediaThumbnail,
   deleteMedia
 } = require('./controller');
-const { authenticate } = require('../../middleware/auth');
+const authenticate = require('../../middleware/auth');
 
 // Get upload directory from environment or use default
 const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(__dirname, '../../../uploads');
@@ -104,7 +104,7 @@ router.get('/thumbnail/:id', authenticate, cacheMiddleware, trackPerformance('ge
  * @desc Get media file by ID
  * @access Private (with authentication)
  */
-router.get('/:id', authenticate, cacheMiddleware, trackPerformance('getMedia'), getMedia);
+router.get('/:id', authenticate, cacheMiddleware, trackPerformance('getMedia'), getMediaById);
 
 /**
  * @route DELETE /api/media/:id

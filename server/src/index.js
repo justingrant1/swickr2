@@ -4,7 +4,7 @@ const http = require('http');
 const cors = require('cors');
 const helmet = require('helmet');
 const compression = require('compression');
-const { setupWebSocketServer } = require('./websocket/socket');
+const { initializeSocketServer } = require('./websocket/socket');
 const { setupRoutes } = require('./api/routes');
 const { errorHandler } = require('./middleware/errorHandler');
 const logger = require('./utils/logger');
@@ -117,7 +117,7 @@ const startServer = async () => {
     
     // Set up WebSocket server (only in non-serverless environment)
     if (!process.env.VERCEL) {
-      setupWebSocketServer(server);
+      initializeSocketServer(server);
     }
     
     // Start the server (only if not in Vercel)

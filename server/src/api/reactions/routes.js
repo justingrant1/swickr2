@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const reactionsController = require('./controller');
-const { authenticate } = require('../../middleware/auth');
+const authenticate = require('../../middleware/auth');
 
 /**
  * Reactions Routes

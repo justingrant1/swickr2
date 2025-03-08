@@ -5,7 +5,8 @@ const Message = require('../models/Message');
 const User = require('../models/User');
 const Conversation = require('../models/Conversation');
 const MessageReaction = require('../models/MessageReaction');
-const { JWT_SECRET } = require('../config/auth');
+const authConfig = require('../config/auth');
+const JWT_SECRET = authConfig.JWT_SECRET;
 
 // Map of userId to socketId
 const userSockets = new Map();
