@@ -17,26 +17,12 @@ app.use(express.json());
 // MongoDB Connection
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://jgrant:Bowery85!@cluster1.cftfrg0.mongodb.net/?retryWrites=true&w=majority&appName=Cluster1';
 
-// Connect to MongoDB
-mongoose.connect(MONGODB_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-})
-.then(() => console.log('MongoDB connected'))
-.catch(err => {
-  console.error('MongoDB connection error:', err);
-  // Don't throw error in serverless environment
-  if (!process.env.VERCEL) {
-    throw err;
-  }
-});
-
 // Define schemas and models
 let User, Message;
 
-// Initialize models after connection is established
-mongoose.connection.on('connected', () => {
-  console.log('Mongoose connection established, defining models');
+// Define models function
+const defineModels = () => {
+  console.log('Defining database models');
   
   // Define User Schema if not already defined
   if (!mongoose.models.User) {
@@ -72,7 +58,37 @@ mongoose.connection.on('connected', () => {
     Message = mongoose.models.Message;
   }
   
+  return { User, Message };
+};
+
+// Connect to MongoDB
+mongoose.connect(MONGODB_URI, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
+})
+.then(() => {
+  console.log('MongoDB connected');
+  // Define models immediately after connection
+  const models = defineModels();
+  User = models.User;
+  Message = models.Message;
   // Create default user after models are defined
+  createDefaultUser();
+})
+.catch(err => {
+  console.error('MongoDB connection error:', err);
+  // Don't throw error in serverless environment
+  if (!process.env.VERCEL) {
+    throw err;
+  }
+});
+
+// Also define models on the connected event as a backup
+mongoose.connection.on('connected', () => {
+  console.log('Mongoose connection established, defining models (backup)');
+  const models = defineModels();
+  User = models.User;
+  Message = models.Message;
   createDefaultUser();
 });
 
@@ -136,15 +152,33 @@ const authenticate = (req, res, next) => {
   }
 };
 
+// Helper function to wait for models to be defined
+const waitForModels = async (maxAttempts = 5, delay = 500) => {
+  let attempts = 0;
+  while (attempts < maxAttempts) {
+    if (User && Message) {
+      return true;
+    }
+    console.log(`Models not ready, waiting... (attempt ${attempts + 1}/${maxAttempts})`);
+    await new Promise(resolve => setTimeout(resolve, delay));
+    attempts++;
+  }
+  return false;
+};
+
 // Register endpoint
 app.post('/api/auth/register', async (req, res) => {
   try {
     console.log('Registration request received:', req.body);
     
-    // Check if User model is defined
+    // Check if User model is defined, with retry
     if (!User) {
-      console.error('User model not defined yet');
-      return res.status(503).json({ error: { message: 'Database not ready, please try again in a moment' } });
+      console.log('User model not defined yet, waiting...');
+      const modelsReady = await waitForModels();
+      if (!modelsReady) {
+        console.error('Models not ready after waiting');
+        return res.status(503).json({ error: { message: 'Database not ready, please try again in a moment' } });
+      }
     }
     
     const { username, email, password, fullName } = req.body;
@@ -243,10 +277,14 @@ app.post('/api/auth/login', async (req, res) => {
   try {
     console.log('Login request received:', { username: req.body.username });
     
-    // Check if User model is defined
+    // Check if User model is defined, with retry
     if (!User) {
-      console.error('User model not defined yet');
-      return res.status(503).json({ error: { message: 'Database not ready, please try again in a moment' } });
+      console.log('User model not defined yet, waiting...');
+      const modelsReady = await waitForModels();
+      if (!modelsReady) {
+        console.error('Models not ready after waiting');
+        return res.status(503).json({ error: { message: 'Database not ready, please try again in a moment' } });
+      }
     }
     
     const { username, password } = req.body;
@@ -336,10 +374,14 @@ app.post('/api/auth/login', async (req, res) => {
 // Get user profile
 app.get('/api/users/me', authenticate, async (req, res) => {
   try {
-    // Check if User model is defined
+    // Check if User model is defined, with retry
     if (!User) {
-      console.error('User model not defined yet');
-      return res.status(503).json({ error: { message: 'Database not ready, please try again in a moment' } });
+      console.log('User model not defined yet, waiting...');
+      const modelsReady = await waitForModels();
+      if (!modelsReady) {
+        console.error('Models not ready after waiting');
+        return res.status(503).json({ error: { message: 'Database not ready, please try again in a moment' } });
+      }
     }
     
     const user = await User.findById(req.user.userId);
@@ -364,10 +406,14 @@ app.get('/api/users/me', authenticate, async (req, res) => {
 // Get messages
 app.get('/api/messages', authenticate, async (req, res) => {
   try {
-    // Check if Message model is defined
+    // Check if Message model is defined, with retry
     if (!Message) {
-      console.error('Message model not defined yet');
-      return res.status(503).json({ error: { message: 'Database not ready, please try again in a moment' } });
+      console.log('Message model not defined yet, waiting...');
+      const modelsReady = await waitForModels();
+      if (!modelsReady) {
+        console.error('Models not ready after waiting');
+        return res.status(503).json({ error: { message: 'Database not ready, please try again in a moment' } });
+      }
     }
     
     const messages = await Message.find({
@@ -387,10 +433,14 @@ app.get('/api/messages', authenticate, async (req, res) => {
 // Send message
 app.post('/api/messages', authenticate, async (req, res) => {
   try {
-    // Check if Message model is defined
+    // Check if Message model is defined, with retry
     if (!Message) {
-      console.error('Message model not defined yet');
-      return res.status(503).json({ error: { message: 'Database not ready, please try again in a moment' } });
+      console.log('Message model not defined yet, waiting...');
+      const modelsReady = await waitForModels();
+      if (!modelsReady) {
+        console.error('Models not ready after waiting');
+        return res.status(503).json({ error: { message: 'Database not ready, please try again in a moment' } });
+      }
     }
     
     const { content, recipientId } = req.body;
@@ -416,10 +466,14 @@ app.post('/api/messages', authenticate, async (req, res) => {
 // Get contacts
 app.get('/api/contacts', authenticate, async (req, res) => {
   try {
-    // Check if User model is defined
+    // Check if User model is defined, with retry
     if (!User) {
-      console.error('User model not defined yet');
-      return res.status(503).json({ error: { message: 'Database not ready, please try again in a moment' } });
+      console.log('User model not defined yet, waiting...');
+      const modelsReady = await waitForModels();
+      if (!modelsReady) {
+        console.error('Models not ready after waiting');
+        return res.status(503).json({ error: { message: 'Database not ready, please try again in a moment' } });
+      }
     }
     
     // Find all users except the current user
