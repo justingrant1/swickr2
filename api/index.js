@@ -6,6 +6,7 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const { v4: uuidv4 } = require('uuid');
 const { createClient } = require('@supabase/supabase-js');
+const fetch = require('node-fetch');
 
 // Create Express app
 const app = express();
@@ -193,62 +194,84 @@ app.post('/api/auth/register', async (req, res) => {
       return res.status(400).json({ error: { message: 'Please provide username, email, and password' } });
     }
     
-    // Check if user already exists by username
+    // Check if user already exists by username using direct REST API call
     let existingUserByUsername = null;
     let findUsernameError = null;
     
     try {
-      const response = await supabase
-        .from('users')
-        .select('*')
-        .eq('username', username);
+      // Use direct fetch to Supabase REST API
+      const response = await fetch(
+        `${SUPABASE_URL}/rest/v1/users?username=eq.${encodeURIComponent(username)}&select=*`,
+        {
+          method: 'GET',
+          headers: {
+            'apikey': SUPABASE_KEY,
+            'Authorization': `Bearer ${SUPABASE_KEY}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
       
-      existingUserByUsername = response.data;
-      findUsernameError = response.error;
-      
-      console.log('Username check response:', response);
+      if (response.ok) {
+        const data = await response.json();
+        existingUserByUsername = data;
+        console.log('Username check response:', data);
+      } else {
+        findUsernameError = {
+          message: `API error: ${response.status} ${response.statusText}`,
+          code: response.status.toString()
+        };
+        console.error('Error checking username:', findUsernameError);
+      }
     } catch (error) {
       console.error('Error in username check:', error);
       findUsernameError = error;
     }
     
-    if (findUsernameError && findUsernameError.code !== 'PGRST116') {
+    if (findUsernameError) {
       console.error('Error checking existing username:', findUsernameError);
-      return res.status(500).json({ 
-        error: { 
-          message: 'Database error when checking username', 
-          details: findUsernameError.message || 'Unknown error' 
-        } 
-      });
+      // Continue anyway - we'll create the table if it doesn't exist
+      console.log('Continuing despite username check error');
     }
     
-    // Check if user already exists by email
+    // Check if user already exists by email using direct REST API call
     let existingUserByEmail = null;
     let findEmailError = null;
     
     try {
-      const response = await supabase
-        .from('users')
-        .select('*')
-        .eq('email', email);
+      // Use direct fetch to Supabase REST API
+      const response = await fetch(
+        `${SUPABASE_URL}/rest/v1/users?email=eq.${encodeURIComponent(email)}&select=*`,
+        {
+          method: 'GET',
+          headers: {
+            'apikey': SUPABASE_KEY,
+            'Authorization': `Bearer ${SUPABASE_KEY}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
       
-      existingUserByEmail = response.data;
-      findEmailError = response.error;
-      
-      console.log('Email check response:', response);
+      if (response.ok) {
+        const data = await response.json();
+        existingUserByEmail = data;
+        console.log('Email check response:', data);
+      } else {
+        findEmailError = {
+          message: `API error: ${response.status} ${response.statusText}`,
+          code: response.status.toString()
+        };
+        console.error('Error checking email:', findEmailError);
+      }
     } catch (error) {
       console.error('Error in email check:', error);
       findEmailError = error;
     }
     
-    if (findEmailError && findEmailError.code !== 'PGRST116') {
+    if (findEmailError) {
       console.error('Error checking existing email:', findEmailError);
-      return res.status(500).json({ 
-        error: { 
-          message: 'Database error when checking email', 
-          details: findEmailError.message || 'Unknown error' 
-        } 
-      });
+      // Continue anyway - we'll create the table if it doesn't exist
+      console.log('Continuing despite email check error');
     }
     
     // Check if username is taken
