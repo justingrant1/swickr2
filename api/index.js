@@ -155,32 +155,46 @@ app.post('/api/auth/register', async (req, res) => {
       return res.status(400).json({ error: { message: 'Please provide username, email, and password' } });
     }
     
-    // Check if user already exists
-    const { data: existingUsers, error: findError } = await supabase
+    // Check if user already exists by username
+    const { data: existingUserByUsername, error: findUsernameError } = await supabase
       .from('users')
       .select('*')
-      .or(`username.eq."${username}",email.eq."${email}"`);
+      .eq('username', username);
     
-    if (findError) {
-      console.error('Error checking existing user:', findError);
+    if (findUsernameError) {
+      console.error('Error checking existing username:', findUsernameError);
       return res.status(500).json({ 
         error: { 
-          message: 'Database error when checking user', 
-          details: findError.message 
+          message: 'Database error when checking username', 
+          details: findUsernameError.message 
+        } 
+      });
+    }
+    
+    // Check if user already exists by email
+    const { data: existingUserByEmail, error: findEmailError } = await supabase
+      .from('users')
+      .select('*')
+      .eq('email', email);
+    
+    if (findEmailError) {
+      console.error('Error checking existing email:', findEmailError);
+      return res.status(500).json({ 
+        error: { 
+          message: 'Database error when checking email', 
+          details: findEmailError.message 
         } 
       });
     }
     
     // Check if username is taken
-    const existingUser = existingUsers?.find(u => u.username === username);
-    if (existingUser) {
-      console.log('User already exists:', existingUser.username);
+    if (existingUserByUsername && existingUserByUsername.length > 0) {
+      console.log('User already exists:', username);
       return res.status(409).json({ error: { message: 'Username already taken' } });
     }
     
     // Check if email is taken
-    const existingEmail = existingUsers?.find(u => u.email === email);
-    if (existingEmail) {
+    if (existingUserByEmail && existingUserByEmail.length > 0) {
       console.log('Email already exists:', email);
       return res.status(409).json({ error: { message: 'Email already taken' } });
     }
@@ -387,10 +401,11 @@ app.get('/api/users/me', authenticate, async (req, res) => {
 // Get messages
 app.get('/api/messages', authenticate, async (req, res) => {
   try {
+    // Get messages where user is sender or recipient
     const { data: messages, error } = await supabase
       .from('messages')
       .select('*')
-      .or(`userId.eq."${req.user.userId}",recipientId.eq."${req.user.userId}"`)
+      .or(`userId.eq.${req.user.userId},recipientId.eq.${req.user.userId}`)
       .order('timestamp', { ascending: true });
     
     if (error) {
