@@ -5,7 +5,7 @@ const cors = require('cors');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const { v4: uuidv4 } = require('uuid');
-const mongoose = require('mongoose');
+const { createClient } = require('@supabase/supabase-js');
 
 // Create Express app
 const app = express();
@@ -14,177 +14,12 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// In-memory database fallback
-const inMemoryDB = {
-  users: [],
-  messages: []
-};
+// Initialize Supabase client
+const SUPABASE_URL = 'https://orfrnjeheaufjznybjtb.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9yZnJuamVoZWF1Zmp6bnlianRiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDE0MDM1MTAsImV4cCI6MjA1Njk3OTUxMH0.sUqLxOTgjFWc1Cia6SDUQDfnMVDKNBx83FqKEWjDSzM';
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
-// Flag to track if we're using in-memory database
-let usingInMemoryDB = false;
-
-// MongoDB Connection - try multiple connection strings
-const MONGODB_URIS = [
-  process.env.MONGODB_URI || 'mongodb+srv://jgrant:Bowery85!@cluster1.cftfrg0.mongodb.net/swickr?retryWrites=true&w=majority',
-  'mongodb://localhost:27017/swickr' // Fallback to local MongoDB if available
-];
-
-// Log the MongoDB URIs (without password)
-console.log('Primary MongoDB URI:', MONGODB_URIS[0].replace(/\/\/([^:]+):([^@]+)@/, '//***:***@'));
-console.log('Fallback MongoDB URI:', MONGODB_URIS[1]);
-
-// Flag to track if we're connected to MongoDB
-let isConnected = false;
-
-// Define schemas and models
-let User, Message;
-
-// Define User Schema
-const userSchema = new mongoose.Schema({
-  username: { type: String, required: true },
-  email: { type: String, required: true },
-  password_hash: { type: String, required: true },
-  full_name: { type: String },
-  status: { type: String, default: 'online' },
-  created_at: { type: Date, default: Date.now }
-});
-
-// Define Message Schema
-const messageSchema = new mongoose.Schema({
-  content: { type: String, required: true },
-  userId: { type: String, required: true },
-  recipientId: { type: String, required: true },
-  timestamp: { type: Date, default: Date.now }
-});
-
-// Configure mongoose
-mongoose.set('strictQuery', false);
-
-// Function to connect to MongoDB with multiple connection strings
-const connectDB = async () => {
-  // Set connection options
-  const options = {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
-    serverSelectionTimeoutMS: 10000, // 10 seconds
-    socketTimeoutMS: 45000, // 45 seconds
-    family: 4 // Use IPv4, skip trying IPv6
-  };
-  
-  // Try each connection string in order
-  for (let i = 0; i < MONGODB_URIS.length; i++) {
-    const uri = MONGODB_URIS[i];
-    try {
-      console.log(`Attempting to connect to MongoDB using URI #${i+1}...`);
-      
-      // Connect to MongoDB
-      await mongoose.connect(uri, options);
-      console.log(`MongoDB connected successfully using URI #${i+1}`);
-      
-      // Set connected flag
-      isConnected = true;
-      
-      // Initialize models
-      initializeModels();
-      
-      // Create default user
-      await createDefaultUser();
-      
-      return true;
-    } catch (error) {
-      console.error(`MongoDB connection error with URI #${i+1}:`, error);
-      
-      // If this is the last URI, return false
-      if (i === MONGODB_URIS.length - 1) {
-        console.error('All connection attempts failed');
-        return false;
-      }
-      
-      // Otherwise, continue to the next URI
-      console.log(`Trying next connection string...`);
-    }
-  }
-  
-  return false;
-};
-
-// Function to initialize models
-const initializeModels = () => {
-  try {
-    // Check if models are already defined
-    if (mongoose.models.User) {
-      User = mongoose.models.User;
-    } else {
-      User = mongoose.model('User', userSchema);
-    }
-    
-    if (mongoose.models.Message) {
-      Message = mongoose.models.Message;
-    } else {
-      Message = mongoose.model('Message', messageSchema);
-    }
-    
-    console.log('Models initialized successfully');
-  } catch (error) {
-    console.error('Error initializing models:', error);
-  }
-};
-
-// Connect to MongoDB
-connectDB();
-
-// Set up connection event handlers
-mongoose.connection.on('connected', () => {
-  console.log('MongoDB connected event fired');
-  initializeModels();
-  createDefaultUser();
-});
-
-// Handle connection errors
-mongoose.connection.on('error', async (err) => {
-  console.error('MongoDB connection error event:', err);
-  
-  // Try to reconnect
-  console.log('Attempting to reconnect...');
-  await connectDB();
-});
-
-// Handle disconnection
-mongoose.connection.on('disconnected', async () => {
-  console.log('MongoDB disconnected, attempting to reconnect...');
-  await connectDB();
-});
-
-// Add default user if none exists
-const createDefaultUser = async () => {
-  try {
-    if (!User) {
-      console.log('User model not defined yet, skipping default user creation');
-      return;
-    }
-    
-    console.log('Checking for default user');
-    const existingUser = await User.findOne({ username: 'testuser1' });
-    if (!existingUser) {
-      console.log('Creating default user');
-      const passwordHash = await bcrypt.hash('password', 10);
-      await User.create({
-        username: 'testuser1',
-        email: 'user1@example.com',
-        password_hash: passwordHash,
-        full_name: 'Test User One',
-        status: 'online'
-      });
-      console.log('Default user created');
-    } else {
-      console.log('Default user already exists');
-    }
-  } catch (error) {
-    console.error('Error creating default user:', error);
-  }
-};
-
-// We'll call createDefaultUser after the models are defined in the connection event
+console.log('Supabase client initialized');
 
 // JWT Secret
 const JWT_SECRET = process.env.JWT_SECRET || 'your_production_jwt_secret_key_here';
@@ -193,7 +28,7 @@ const JWT_SECRET = process.env.JWT_SECRET || 'your_production_jwt_secret_key_her
 app.get('/api/health', (req, res) => {
   res.status(200).json({ 
     status: 'ok', 
-    message: 'Swickr API is running with MongoDB',
+    message: 'Swickr API is running with Supabase',
     timestamp: new Date().toISOString()
   });
 });
@@ -215,39 +50,97 @@ const authenticate = (req, res, next) => {
   }
 };
 
-// Helper function to wait for models to be defined
-const waitForModels = async (maxAttempts = 10, delay = 1000) => {
-  let attempts = 0;
-  while (attempts < maxAttempts) {
-    if (User && Message) {
-      console.log('Models are now ready');
-      return true;
+// Initialize Supabase tables if they don't exist
+const initializeSupabaseTables = async () => {
+  try {
+    console.log('Checking if Supabase tables exist...');
+    
+    // Check if users table exists
+    const { data: usersTable, error: usersError } = await supabase
+      .from('users')
+      .select('id')
+      .limit(1);
+    
+    if (usersError && usersError.code === '42P01') { // Table doesn't exist
+      console.log('Users table does not exist. It will be created automatically when needed.');
+    } else {
+      console.log('Users table already exists');
     }
     
-    // Try to initialize models again
-    try {
-      if (!User && mongoose.models.User) {
-        User = mongoose.models.User;
-      } else if (!User) {
-        User = mongoose.model('User', userSchema);
-      }
-      
-      if (!Message && mongoose.models.Message) {
-        Message = mongoose.models.Message;
-      } else if (!Message) {
-        Message = mongoose.model('Message', messageSchema);
-      }
-    } catch (error) {
-      console.error(`Error initializing models during wait (attempt ${attempts + 1}):`, error);
+    // Check if messages table exists
+    const { data: messagesTable, error: messagesError } = await supabase
+      .from('messages')
+      .select('id')
+      .limit(1);
+    
+    if (messagesError && messagesError.code === '42P01') { // Table doesn't exist
+      console.log('Messages table does not exist. It will be created automatically when needed.');
+    } else {
+      console.log('Messages table already exists');
     }
     
-    console.log(`Models not ready, waiting... (attempt ${attempts + 1}/${maxAttempts})`);
-    await new Promise(resolve => setTimeout(resolve, delay));
-    attempts++;
+    // Create default user if it doesn't exist
+    await createDefaultUser();
+    
+  } catch (error) {
+    console.error('Error initializing Supabase tables:', error);
   }
-  console.error('Failed to initialize models after maximum attempts');
-  return false;
 };
+
+// Add default user if none exists
+const createDefaultUser = async () => {
+  try {
+    console.log('Checking for default user');
+    
+    // Check if default user exists
+    const { data: existingUser, error: findError } = await supabase
+      .from('users')
+      .select('*')
+      .eq('username', 'testuser1')
+      .single();
+    
+    if (findError && findError.code !== 'PGRST116') { // Not found is not an error in this case
+      console.error('Error checking for default user:', findError);
+      return;
+    }
+    
+    if (!existingUser) {
+      console.log('Creating default user');
+      
+      // Hash password
+      const passwordHash = await bcrypt.hash('password', 10);
+      
+      // Create default user
+      const { data: newUser, error: createError } = await supabase
+        .from('users')
+        .insert([
+          {
+            id: uuidv4(),
+            username: 'testuser1',
+            email: 'user1@example.com',
+            password_hash: passwordHash,
+            full_name: 'Test User One',
+            status: 'online',
+            created_at: new Date()
+          }
+        ])
+        .select();
+      
+      if (createError) {
+        console.error('Error creating default user:', createError);
+      } else {
+        console.log('Default user created successfully');
+      }
+    } else {
+      console.log('Default user already exists');
+    }
+  } catch (error) {
+    console.error('Error in createDefaultUser:', error);
+  }
+};
+
+// Initialize Supabase tables
+initializeSupabaseTables();
 
 // Register endpoint
 app.post('/api/auth/register', async (req, res) => {
@@ -262,126 +155,80 @@ app.post('/api/auth/register', async (req, res) => {
       return res.status(400).json({ error: { message: 'Please provide username, email, and password' } });
     }
     
-    // Try to use MongoDB if available
-    if (mongoose.connection.readyState === 1 && User) {
-      try {
-        console.log('Using MongoDB for registration');
-        
-        // Check if user already exists
-        console.log('Checking if username exists:', username);
-        const existingUser = await User.findOne({ username });
-        if (existingUser) {
-          console.log('User already exists:', existingUser.username);
-          return res.status(409).json({ error: { message: 'Username already taken' } });
-        }
-        
-        console.log('Checking if email exists:', email);
-        const existingEmail = await User.findOne({ email });
-        if (existingEmail) {
-          console.log('Email already exists:', email);
-          return res.status(409).json({ error: { message: 'Email already taken' } });
-        }
-        
-        console.log('Username and email are available');
-        
-        // Hash password
-        const salt = await bcrypt.genSalt(10);
-        const passwordHash = await bcrypt.hash(password, salt);
-        
-        // Create new user
-        const newUser = await User.create({
-          username,
-          email,
-          password_hash: passwordHash,
-          full_name: fullName || username,
-          status: 'online'
-        });
-        
-        console.log('User created successfully in MongoDB:', newUser.username);
-        
-        // Generate tokens
-        const accessToken = jwt.sign(
-          { userId: newUser._id, username: newUser.username, email: newUser.email },
-          JWT_SECRET,
-          { expiresIn: '15m' }
-        );
-        
-        const refreshToken = jwt.sign(
-          { userId: newUser._id },
-          JWT_SECRET,
-          { expiresIn: '7d' }
-        );
-        
-        // Return user data and tokens
-        return res.status(201).json({
-          user: {
-            id: newUser._id,
-            username: newUser.username,
-            email: newUser.email,
-            fullName: newUser.full_name,
-            status: newUser.status
-          },
-          tokens: {
-            accessToken,
-            refreshToken
-          }
-        });
-      } catch (mongoError) {
-        console.error('MongoDB error during registration:', mongoError);
-        console.log('Falling back to in-memory database');
-        // Fall through to in-memory database
-      }
-    } else {
-      console.log('MongoDB not available, using in-memory database');
-      // Fall through to in-memory database
+    // Check if user already exists
+    const { data: existingUsers, error: findError } = await supabase
+      .from('users')
+      .select('*')
+      .or(`username.eq."${username}",email.eq."${email}"`);
+    
+    if (findError) {
+      console.error('Error checking existing user:', findError);
+      return res.status(500).json({ 
+        error: { 
+          message: 'Database error when checking user', 
+          details: findError.message 
+        } 
+      });
     }
     
-    // Use in-memory database as fallback
-    usingInMemoryDB = true;
-    console.log('Using in-memory database for registration');
-    
-    // Check if user already exists in in-memory DB
-    const existingUser = inMemoryDB.users.find(u => u.username === username);
+    // Check if username is taken
+    const existingUser = existingUsers?.find(u => u.username === username);
     if (existingUser) {
-      console.log('User already exists in in-memory DB:', existingUser.username);
+      console.log('User already exists:', existingUser.username);
       return res.status(409).json({ error: { message: 'Username already taken' } });
     }
     
-    const existingEmail = inMemoryDB.users.find(u => u.email === email);
+    // Check if email is taken
+    const existingEmail = existingUsers?.find(u => u.email === email);
     if (existingEmail) {
-      console.log('Email already exists in in-memory DB:', email);
+      console.log('Email already exists:', email);
       return res.status(409).json({ error: { message: 'Email already taken' } });
     }
+    
+    console.log('Username and email are available');
     
     // Hash password
     const salt = await bcrypt.genSalt(10);
     const passwordHash = await bcrypt.hash(password, salt);
     
-    // Create new user in in-memory DB
+    // Create new user
     const userId = uuidv4();
-    const newUser = {
-      _id: userId,
-      id: userId,
-      username,
-      email,
-      password_hash: passwordHash,
-      full_name: fullName || username,
-      status: 'online',
-      created_at: new Date()
-    };
+    const { data: newUser, error: createError } = await supabase
+      .from('users')
+      .insert([
+        {
+          id: userId,
+          username,
+          email,
+          password_hash: passwordHash,
+          full_name: fullName || username,
+          status: 'online',
+          created_at: new Date()
+        }
+      ])
+      .select();
     
-    inMemoryDB.users.push(newUser);
-    console.log('User created successfully in in-memory DB:', newUser.username);
+    if (createError) {
+      console.error('Error creating user:', createError);
+      return res.status(500).json({ 
+        error: { 
+          message: 'Error creating user', 
+          details: createError.message 
+        } 
+      });
+    }
+    
+    console.log('User created successfully:', username);
     
     // Generate tokens
     const accessToken = jwt.sign(
-      { userId: newUser._id, username: newUser.username, email: newUser.email },
+      { userId, username, email },
       JWT_SECRET,
       { expiresIn: '15m' }
     );
     
     const refreshToken = jwt.sign(
-      { userId: newUser._id },
+      { userId },
       JWT_SECRET,
       { expiresIn: '7d' }
     );
@@ -389,11 +236,11 @@ app.post('/api/auth/register', async (req, res) => {
     // Return user data and tokens
     return res.status(201).json({
       user: {
-        id: newUser._id,
-        username: newUser.username,
-        email: newUser.email,
-        fullName: newUser.full_name,
-        status: newUser.status
+        id: userId,
+        username,
+        email,
+        fullName: fullName || username,
+        status: 'online'
       },
       tokens: {
         accessToken,
@@ -425,112 +272,65 @@ app.post('/api/auth/login', async (req, res) => {
       return res.status(400).json({ error: { message: 'Please provide username and password' } });
     }
     
-    // Try to use MongoDB if available
-    if (mongoose.connection.readyState === 1 && User) {
-      try {
-        console.log('Using MongoDB for login');
-        
-        // Find user
-        const user = await User.findOne({ username });
-        if (!user) {
-          console.log('User not found in MongoDB:', username);
-          // Don't return error yet, check in-memory DB
-        } else {
-          // Verify password
-          const isMatch = await bcrypt.compare(password, user.password_hash);
-          if (!isMatch) {
-            console.log('Invalid password for user in MongoDB:', username);
-            return res.status(401).json({ error: { message: 'Invalid credentials' } });
-          }
-          
-          // Update user status
-          try {
-            user.status = 'online';
-            await user.save();
-          } catch (saveError) {
-            console.error('Error updating user status:', saveError);
-            // Continue even if status update fails
-          }
-          
-          // Generate tokens
-          const accessToken = jwt.sign(
-            { userId: user._id, username: user.username, email: user.email },
-            JWT_SECRET,
-            { expiresIn: '15m' }
-          );
-          
-          const refreshToken = jwt.sign(
-            { userId: user._id },
-            JWT_SECRET,
-            { expiresIn: '7d' }
-          );
-          
-          console.log('Login successful for user in MongoDB:', username);
-          
-          // Return user data and tokens
-          return res.status(200).json({
-            user: {
-              id: user._id,
-              username: user.username,
-              email: user.email,
-              fullName: user.full_name,
-              status: user.status
-            },
-            tokens: {
-              accessToken,
-              refreshToken
-            }
-          });
-        }
-      } catch (mongoError) {
-        console.error('MongoDB error during login:', mongoError);
-        console.log('Falling back to in-memory database');
-        // Fall through to in-memory database
-      }
-    } else {
-      console.log('MongoDB not available, using in-memory database');
-      // Fall through to in-memory database
+    // Find user
+    const { data: user, error: findError } = await supabase
+      .from('users')
+      .select('*')
+      .eq('username', username)
+      .single();
+    
+    if (findError) {
+      console.error('Error finding user:', findError);
+      return res.status(500).json({ 
+        error: { 
+          message: 'Database error when finding user', 
+          details: findError.message 
+        } 
+      });
     }
     
-    // Use in-memory database as fallback
-    console.log('Using in-memory database for login');
-    
-    // Find user in in-memory DB
-    const user = inMemoryDB.users.find(u => u.username === username);
     if (!user) {
-      console.log('User not found in in-memory DB:', username);
+      console.log('User not found:', username);
       return res.status(401).json({ error: { message: 'Invalid credentials' } });
     }
     
     // Verify password
     const isMatch = await bcrypt.compare(password, user.password_hash);
     if (!isMatch) {
-      console.log('Invalid password for user in in-memory DB:', username);
+      console.log('Invalid password for user:', username);
       return res.status(401).json({ error: { message: 'Invalid credentials' } });
     }
     
     // Update user status
-    user.status = 'online';
+    const { error: updateError } = await supabase
+      .from('users')
+      .update({ status: 'online' })
+      .eq('id', user.id);
+    
+    if (updateError) {
+      console.error('Error updating user status:', updateError);
+      // Continue even if status update fails
+    }
     
     // Generate tokens
     const accessToken = jwt.sign(
-      { userId: user._id, username: user.username, email: user.email },
+      { userId: user.id, username: user.username, email: user.email },
       JWT_SECRET,
       { expiresIn: '15m' }
     );
     
     const refreshToken = jwt.sign(
-      { userId: user._id },
+      { userId: user.id },
       JWT_SECRET,
       { expiresIn: '7d' }
     );
     
-    console.log('Login successful for user in in-memory DB:', username);
+    console.log('Login successful for user:', username);
     
     // Return user data and tokens
     return res.status(200).json({
       user: {
-        id: user._id,
+        id: user.id,
         username: user.username,
         email: user.email,
         fullName: user.full_name,
@@ -556,24 +356,23 @@ app.post('/api/auth/login', async (req, res) => {
 // Get user profile
 app.get('/api/users/me', authenticate, async (req, res) => {
   try {
-    // Check if User model is defined, with retry
-    if (!User) {
-      console.log('User model not defined yet, waiting...');
-      const modelsReady = await waitForModels();
-      if (!modelsReady) {
-        console.error('Models not ready after waiting');
-        return res.status(503).json({ error: { message: 'Database not ready, please try again in a moment' } });
-      }
-    }
+    const { data: user, error } = await supabase
+      .from('users')
+      .select('*')
+      .eq('id', req.user.userId)
+      .single();
     
-    const user = await User.findById(req.user.userId);
+    if (error) {
+      console.error('Error getting user profile:', error);
+      return res.status(500).json({ error: { message: 'Failed to get user profile' } });
+    }
     
     if (!user) {
       return res.status(404).json({ error: { message: 'User not found' } });
     }
     
     res.json({
-      id: user._id,
+      id: user.id,
       username: user.username,
       email: user.email,
       fullName: user.full_name,
@@ -588,22 +387,16 @@ app.get('/api/users/me', authenticate, async (req, res) => {
 // Get messages
 app.get('/api/messages', authenticate, async (req, res) => {
   try {
-    // Check if Message model is defined, with retry
-    if (!Message) {
-      console.log('Message model not defined yet, waiting...');
-      const modelsReady = await waitForModels();
-      if (!modelsReady) {
-        console.error('Models not ready after waiting');
-        return res.status(503).json({ error: { message: 'Database not ready, please try again in a moment' } });
-      }
-    }
+    const { data: messages, error } = await supabase
+      .from('messages')
+      .select('*')
+      .or(`userId.eq."${req.user.userId}",recipientId.eq."${req.user.userId}"`)
+      .order('timestamp', { ascending: true });
     
-    const messages = await Message.find({
-      $or: [
-        { userId: req.user.userId },
-        { recipientId: req.user.userId }
-      ]
-    }).sort({ timestamp: 1 });
+    if (error) {
+      console.error('Error getting messages:', error);
+      return res.status(500).json({ error: { message: 'Failed to get messages' } });
+    }
     
     res.json(messages);
   } catch (error) {
@@ -615,30 +408,32 @@ app.get('/api/messages', authenticate, async (req, res) => {
 // Send message
 app.post('/api/messages', authenticate, async (req, res) => {
   try {
-    // Check if Message model is defined, with retry
-    if (!Message) {
-      console.log('Message model not defined yet, waiting...');
-      const modelsReady = await waitForModels();
-      if (!modelsReady) {
-        console.error('Models not ready after waiting');
-        return res.status(503).json({ error: { message: 'Database not ready, please try again in a moment' } });
-      }
-    }
-    
     const { content, recipientId } = req.body;
     
     if (!content || !recipientId) {
       return res.status(400).json({ error: { message: 'Content and recipientId are required' } });
     }
     
-    const newMessage = await Message.create({
-      content,
-      userId: req.user.userId,
-      recipientId,
-      timestamp: new Date()
-    });
+    const messageId = uuidv4();
+    const { data: newMessage, error } = await supabase
+      .from('messages')
+      .insert([
+        {
+          id: messageId,
+          content,
+          userId: req.user.userId,
+          recipientId,
+          timestamp: new Date()
+        }
+      ])
+      .select();
     
-    res.status(201).json(newMessage);
+    if (error) {
+      console.error('Error sending message:', error);
+      return res.status(500).json({ error: { message: 'Failed to send message' } });
+    }
+    
+    res.status(201).json(newMessage[0]);
   } catch (error) {
     console.error('Send message error:', error);
     res.status(500).json({ error: { message: 'Failed to send message' } });
@@ -648,22 +443,18 @@ app.post('/api/messages', authenticate, async (req, res) => {
 // Get contacts
 app.get('/api/contacts', authenticate, async (req, res) => {
   try {
-    // Check if User model is defined, with retry
-    if (!User) {
-      console.log('User model not defined yet, waiting...');
-      const modelsReady = await waitForModels();
-      if (!modelsReady) {
-        console.error('Models not ready after waiting');
-        return res.status(503).json({ error: { message: 'Database not ready, please try again in a moment' } });
-      }
+    const { data: contacts, error } = await supabase
+      .from('users')
+      .select('id, username, full_name, status')
+      .neq('id', req.user.userId);
+    
+    if (error) {
+      console.error('Error getting contacts:', error);
+      return res.status(500).json({ error: { message: 'Failed to get contacts' } });
     }
     
-    // Find all users except the current user
-    const contacts = await User.find({ _id: { $ne: req.user.userId } })
-      .select('_id username full_name status');
-    
     res.json(contacts.map(contact => ({
-      id: contact._id,
+      id: contact.id,
       username: contact.username,
       fullName: contact.full_name,
       status: contact.status
